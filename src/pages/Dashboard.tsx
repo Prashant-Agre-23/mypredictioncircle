@@ -12,7 +12,7 @@ const Dashboard = () => {
         }}
       >
         <Typography variant="h2" component="h1" sx={{ fontWeight: 'bold' }}>
-          My Prediction Dashboard
+          My Prediction Dashboard Login
         </Typography>
       </Box>
     </Container>

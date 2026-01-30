@@ -1,0 +1,193 @@
+/* ========================================================================== */
+/* Leaderboard Container */
+/* ========================================================================== */
+
+.leaderboardContainer {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.contentContainer {
+  flex: 1;
+  padding: 2rem 1rem !important;
+}
+
+@media (max-width: 599px) {
+  .contentContainer {
+    padding: 1rem !important;
+  }
+}
+
+/* ========================================================================== */
+/* Header Section */
+/* ========================================================================== */
+
+.headerSection {
+  margin-bottom: 2rem;
+}
+
+.titleBox {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.titleIcon {
+  font-size: 2.5rem;
+  color: #ffc107;
+  filter: drop-shadow(0 0 10px rgba(255, 193, 7, 0.5));
+}
+
+.title {
+  font-weight: 700;
+  color: #667eea;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 2rem !important;
+  font-size: 1rem;
+}
+
+@media (max-width: 599px) {
+  .titleBox {
+    gap: 0.75rem;
+  }
+
+  .titleIcon {
+    font-size: 2rem;
+  }
+
+  .title {
+    font-size: 1.75rem !important;
+  }
+
+  .subtitle {
+    font-size: 0.9rem;
+  }
+}
+
+/* ========================================================================== */
+/* Table Styling */
+/* ========================================================================== */
+
+.tableContainer {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.tableHeader {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+.headerCell {
+  color: white !important;
+  font-weight: 700 !important;
+  padding: 1rem !important;
+  font-size: 0.95rem;
+}
+
+.tableRow {
+  transition: background-color 0.3s ease;
+}
+
+.tableRow:hover {
+  background-color: rgba(102, 126, 234, 0.08) !important;
+}
+
+.rowEven {
+  background-color: #f5f5f5;
+}
+
+.rowOdd {
+  background-color: white;
+}
+
+.rankCell {
+  font-weight: 700 !important;
+  font-size: 1.1rem;
+  padding: 1rem !important;
+}
+
+.rankCell {
+  color: #333;
+}
+
+.nameCell {
+  font-weight: 500 !important;
+  color: #333 !important;
+  padding: 1rem !important;
+}
+
+.emailCell {
+  color: #666 !important;
+  padding: 1rem !important;
+}
+
+.scoreCell {
+  font-weight: 600 !important;
+  color: #667eea !important;
+  font-size: 1.05rem;
+  padding: 1rem !important;
+}
+
+.predictionsCell {
+  color: #666 !important;
+  padding: 1rem !important;
+}
+
+.accuracyCell {
+  font-weight: 600 !important;
+  padding: 1rem !important;
+}
+
+/* Color accuracy based on percentage */
+.tableRow:has(.accuracyCell:contains("8")) .accuracyCell,
+.tableRow:has(.accuracyCell:contains("9")) .accuracyCell {
+  color: #2e7d32 !important;
+}
+
+.tableRow:has(.accuracyCell:contains("7")) .accuracyCell {
+  color: #f57c00 !important;
+}
+
+@media (max-width: 959px) {
+  .headerCell,
+  .rankCell,
+  .nameCell,
+  .emailCell,
+  .scoreCell,
+  .predictionsCell,
+  .accuracyCell {
+    padding: 0.75rem !important;
+    font-size: 0.85rem;
+  }
+
+  .titleIcon {
+    font-size: 1.75rem;
+  }
+}
+
+@media (max-width: 599px) {
+  .headerCell,
+  .rankCell,
+  .nameCell,
+  .emailCell,
+  .scoreCell,
+  .predictionsCell,
+  .accuracyCell {
+    padding: 0.6rem !important;
+    font-size: 0.75rem;
+  }
+
+  .titleIcon {
+    font-size: 1.5rem;
+  }
+
+  .scoreCell {
+    font-size: 0.9rem;
+  }
+}

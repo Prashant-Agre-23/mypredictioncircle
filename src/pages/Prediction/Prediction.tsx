@@ -376,15 +376,6 @@ const Prediction = () => {
   const correctBowlerId = correctAnswer?.bowler_id ?? null;
   const correctMomId = correctAnswer?.mom_id ?? null;
 
-  const isCorrect = (tab: TabKey): boolean | null => {
-    if (!correctAnswer) return null;
-    if (tab === 'winner') return correctWinner !== null && selections.winner === correctWinner;
-    if (tab === 'batter') return correctBatterId !== null && Number(selections.batter) === correctBatterId;
-    if (tab === 'bowler') return correctBowlerId !== null && Number(selections.bowler) === correctBowlerId;
-    if (tab === 'mom') return correctMomId !== null && Number(selections.mom) === correctMomId;
-    return null;
-  };
-
   const hasResults = correctAnswer !== null;
 
   const selectPlayer = (tab: TabKey, id: string | number) => {

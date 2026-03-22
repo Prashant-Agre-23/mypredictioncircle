@@ -4,6 +4,7 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import Navbar from '../../components/Navbar/Navbar';
 import { supabase } from '../../config/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import { getTeamMeta } from '../../utils/teamMeta';
 
 interface LeaderboardRow {
   rank: number;
@@ -12,6 +13,14 @@ interface LeaderboardRow {
   display_name: string;
   total_points: number;
   graded_predictions: number;
+}
+
+interface MatchPoints {
+  match_id: number;
+  match_number: number;
+  points: number | null;
+  team_a: string | null;
+  team_b: string | null;
 }
 
 interface PredRow {
@@ -26,10 +35,12 @@ interface PredRow {
 
 interface CaRow {
   match_id: number;
+  match_number: number | null;
   winner: string | null;
   batter_id: number | null;
   bowler_id: number | null;
   mom_id: number | null;
+  is_washout: boolean | null;
 }
 
 interface ComputedStats {
@@ -55,6 +66,8 @@ const Leaderboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [statsMap, setStatsMap] = useState<Record<string, ComputedStats>>({});
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [matchBreakdown, setMatchBreakdown] = useState<Record<string, MatchPoints[]>>({});
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
@@ -71,7 +84,7 @@ const Leaderboard = () => {
           .select('user_id, match_id, is_double_trouble, predicted_winner, predicted_batter_id, predicted_bowler_id, predicted_mom_id'),
         supabase
           .from('correct_answers')
-          .select('match_id, winner, batter_id, bowler_id, mom_id'),
+          .select('match_id, match_number, winner, batter_id, bowler_id, mom_id, is_washout'),
       ]);
 
       if (lbRes.error) { setError(lbRes.error.message); setLoading(false); return; }
@@ -81,40 +94,52 @@ const Leaderboard = () => {
       // Build stats map
       const preds = (predRes.data ?? []) as PredRow[];
       const cas = (caRes.data ?? []) as CaRow[];
-      const caMap = new Map(cas.map((c) => [c.match_id, c]));
+
+      // Sort correct_answers by match_number so we iterate in match order
+      const sortedCas = [...cas].sort((a, b) => (a.match_number ?? 0) - (b.match_number ?? 0));
 
       const map: Record<string, ComputedStats> = {};
       for (const row of lbRows) {
-        const userPreds = preds
-          .filter((p) => p.user_id === row.user_id)
-          .sort((a, b) => a.match_id - b.match_id);
+        // Index this user's predictions by match_id for O(1) lookup
+        const userPredMap = new Map(
+          preds
+            .filter((p) => p.user_id === row.user_id)
+            .map((p) => [p.match_id, p])
+        );
 
         let dtCount = 0;
         let streak = 0;
 
-        for (const p of userPreds) {
-          const ca = caMap.get(p.match_id);
-          if (!ca) continue;
+        // Walk every graded match in order
+        for (const ca of sortedCas) {
+          const isWashout = ca.is_washout === true;
+
+          // If washout: streak is unaffected (neither increment nor reset)
+          if (isWashout) continue;
+
+          const p = userPredMap.get(ca.match_id);
+
+          // Missed match (no prediction submitted) → streak resets
+          if (!p) {
+            streak = 0;
+            continue;
+          }
+
           if (p.is_double_trouble) dtCount++;
 
-          const won =
-            !!ca.winner && p.predicted_winner === ca.winner &&
-            !!ca.batter_id && Number(p.predicted_batter_id) === ca.batter_id &&
-            !!ca.bowler_id && Number(p.predicted_bowler_id) === ca.bowler_id &&
-            !!ca.mom_id && Number(p.predicted_mom_id) === ca.mom_id;
+          // Streak is based on correctly predicting the winner only
+          const winnerCorrect = !!ca.winner && p.predicted_winner === ca.winner;
 
-          const anyCorrect =
-            (!!ca.winner && p.predicted_winner === ca.winner) ||
-            (!!ca.batter_id && Number(p.predicted_batter_id) === ca.batter_id) ||
-            (!!ca.bowler_id && Number(p.predicted_bowler_id) === ca.bowler_id) ||
-            (!!ca.mom_id && Number(p.predicted_mom_id) === ca.mom_id);
-
-          if (anyCorrect) {
-            streak = streak >= 5 ? 1 : streak + 1; // reset after hitting 5
+          if (winnerCorrect) {
+            streak += 1;
+            if (streak === 5) {
+              // Fifer bonus awarded — reset streak to 0
+              streak = 0;
+            }
           } else {
-            streak = 0; // loss resets streak
+            // Wrong winner or ungraded → streak resets
+            streak = 0;
           }
-          void won;
         }
 
         map[row.user_id] = { dtCount, streak };
@@ -130,15 +155,56 @@ const Leaderboard = () => {
     [rows]
   );
 
+  // Fetch per-match breakdown lazily when accordion opens
+  const handleToggleRow = async (userId: string) => {
+    if (expandedUserId === userId) {
+      setExpandedUserId(null);
+      return;
+    }
+    setExpandedUserId(userId);
+    if (matchBreakdown[userId]) return; // already fetched
+
+    // Fetch points data
+    const { data: pwpData } = await supabase
+      .from('predictions_with_points')
+      .select('match_id, match_number, points')
+      .eq('user_id', userId)
+      .not('points', 'is', null)
+      .order('match_number', { ascending: true });
+
+    const pwpRows = (pwpData ?? []) as { match_id: number; match_number: number; points: number | null }[];
+
+    // Fetch team names for those match IDs
+    const matchIds = pwpRows.map((r) => r.match_id);
+    const teamMap: Record<number, { team_a: string | null; team_b: string | null }> = {};
+    if (matchIds.length > 0) {
+      const { data: matchData } = await supabase
+        .from('matches')
+        .select('id, team_a, team_b')
+        .in('id', matchIds);
+      for (const m of matchData ?? []) {
+        teamMap[m.id] = { team_a: m.team_a ?? null, team_b: m.team_b ?? null };
+      }
+    }
+
+    const merged: MatchPoints[] = pwpRows.map((r) => ({
+      ...r,
+      team_a: teamMap[r.match_id]?.team_a ?? null,
+      team_b: teamMap[r.match_id]?.team_b ?? null,
+    }));
+
+    setMatchBreakdown((prev) => ({ ...prev, [userId]: merged }));
+  };
+
   const myRow = sorted.find((r) => r.user_id === session?.user?.id);
   const visible = showAll ? sorted : sorted.slice(0, PAGE_SIZE);
   const maxPts = sorted[0]?.total_points ?? 1;
 
   const streakLabel = (n: number) => {
     if (n === 0) return { text: '—', color: 'rgba(255,255,255,0.2)' };
-    if (n >= 5) return { text: `🔥${n}`, color: '#f97316' };
-    if (n >= 3) return { text: `⚡${n}`, color: '#facc15' };
-    return { text: `${n}`, color: 'rgba(255,255,255,0.55)' };
+    if (n >= 5) return { text: `🔥${n}`, color: '#fb923c' };
+    if (n >= 3) return { text: `⚡${n}`, color: '#fbbf24' };
+    return { text: `${n}`, color: 'rgba(255,255,255,0.65)' };
   };
 
   return (
@@ -148,24 +214,10 @@ const Leaderboard = () => {
       {/* ── Header ────────────────────────────────────────── */}
       <Box
         sx={{
-          background: 'linear-gradient(160deg, #0a0a0f 0%, #130826 55%, #0a0a0f 100%)',
+          background: '#0a0a0f',
           pt: 3.5,
           pb: 4,
           px: 2,
-          position: 'relative',
-          overflow: 'hidden',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: '-40px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: '500px',
-            height: '260px',
-            borderRadius: '50%',
-            background: 'radial-gradient(ellipse, rgba(139,92,246,0.14) 0%, transparent 70%)',
-            pointerEvents: 'none',
-          },
         }}
       >
         <Container maxWidth="md" disableGutters>
@@ -198,7 +250,7 @@ const Leaderboard = () => {
       {/* ── Loading / Error ───────────────────────────────── */}
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress sx={{ color: '#a78bfa' }} />
+          <CircularProgress sx={{ color: 'rgba(255,255,255,0.5)' }} />
         </Box>
       )}
       {error && (
@@ -216,8 +268,8 @@ const Leaderboard = () => {
               px: 2,
               py: 1.25,
               borderRadius: '16px',
-              background: 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(109,40,217,0.08))',
-              border: '1.5px solid rgba(167,139,250,0.3)',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.12)',
               display: 'flex',
               alignItems: 'center',
               gap: 1.25,
@@ -226,7 +278,8 @@ const Leaderboard = () => {
             <Box
               sx={{
                 width: 36, height: 36, borderRadius: '10px',
-                background: '#7c3aed',
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.18)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontWeight: 900, fontSize: '0.78rem', color: '#fff', flexShrink: 0,
               }}
@@ -234,7 +287,7 @@ const Leaderboard = () => {
               {getInitials(myRow.display_name)}
             </Box>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#e9d5ff', lineHeight: 1.2 }}>
+              <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#fff', lineHeight: 1.2 }}>
                 {myRow.display_name}
               </Typography>
               <Typography sx={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.38)', fontWeight: 600 }}>
@@ -242,7 +295,7 @@ const Leaderboard = () => {
               </Typography>
             </Box>
             <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-              <Typography sx={{ fontWeight: 900, fontSize: '1.1rem', color: '#a78bfa', lineHeight: 1 }}>
+              <Typography sx={{ fontWeight: 900, fontSize: '1.1rem', color: '#fff', lineHeight: 1 }}>
                 #{myRow.rank}
               </Typography>
               <Typography sx={{ fontWeight: 700, fontSize: '0.65rem', color: 'rgba(255,255,255,0.38)' }}>
@@ -262,19 +315,20 @@ const Leaderboard = () => {
             sx={{
               borderRadius: '20px',
               overflow: 'hidden',
-              border: '1px solid rgba(255,255,255,0.07)',
-              background: 'rgba(255,255,255,0.015)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              background: '#111',
+              boxShadow: '0 4px 32px rgba(0,0,0,0.5)',
             }}
           >
             {/* Column headers */}
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: '44px 1fr 52px 62px 80px',
+                gridTemplateColumns: '44px 1fr 52px 62px 72px 28px',
                 alignItems: 'center',
                 px: 2,
                 py: 1.1,
-                background: 'rgba(255,255,255,0.04)',
+                background: '#000',
                 borderBottom: '1px solid rgba(255,255,255,0.07)',
               }}
             >
@@ -284,13 +338,14 @@ const Leaderboard = () => {
                 { label: 'DT', align: 'center' },
                 { label: 'Streak', align: 'center' },
                 { label: 'Points', align: 'right' },
+                { label: '', align: 'center' },
               ].map(({ label, align }) => (
                 <Typography
                   key={label}
                   sx={{
                     fontWeight: 800,
                     fontSize: '0.58rem',
-                    color: 'rgba(255,255,255,0.28)',
+                    color: 'rgba(255,255,255,0.5)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.1em',
                     textAlign: align as 'center' | 'left' | 'right',
@@ -307,126 +362,287 @@ const Leaderboard = () => {
               const medal = MEDAL[row.rank];
               const barPct = Math.max(4, Math.round((row.total_points / maxPts) * 100));
               const isLast = idx === visible.length - 1;
+              const isExpanded = expandedUserId === row.user_id;
+              const breakdown = matchBreakdown[row.user_id] ?? [];
 
               return (
-                <Box
-                  key={row.user_id}
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: '44px 1fr 52px 62px 80px',
-                    alignItems: 'center',
-                    px: 2,
-                    py: 1.4,
-                    borderBottom: isLast ? 'none' : '1px solid rgba(255,255,255,0.045)',
-                    background: isMe
-                      ? 'linear-gradient(90deg, rgba(124,58,237,0.14) 0%, rgba(109,40,217,0.05) 100%)'
-                      : 'transparent',
-                    position: 'relative',
-                    transition: 'background 0.15s',
-                    '&:hover': {
-                      background: isMe
-                        ? 'linear-gradient(90deg, rgba(124,58,237,0.2) 0%, rgba(109,40,217,0.1) 100%)'
-                        : 'rgba(255,255,255,0.025)',
-                    },
-                    ...(isMe && {
-                      '&::before': {
-                        content: '""',
-                        position: 'absolute',
-                        left: 0, top: '18%', bottom: '18%',
-                        width: '3px',
-                        borderRadius: '0 3px 3px 0',
-                        background: '#7c3aed',
+                <Box key={row.user_id}>
+                  {/* ── Main row (clickable) ── */}
+                  <Box
+                    onClick={() => handleToggleRow(row.user_id)}
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: '44px 1fr 52px 62px 72px 28px',
+                      alignItems: 'center',
+                      px: 2,
+                      py: 1.4,
+                      borderBottom: isExpanded ? 'none' : isLast ? 'none' : '1px solid rgba(255,255,255,0.06)',
+                      background: isExpanded
+                        ? 'rgba(255,255,255,0.05)'
+                        : '#111',
+                      cursor: 'pointer',
+                      position: 'relative',
+                      transition: 'background 0.15s',
+                      '&:hover': {
+                        background: 'rgba(255,255,255,0.05)',
                       },
-                    }),
-                  }}
-                >
-                  {/* Rank / Medal */}
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {medal ? (
-                      <Typography sx={{ fontSize: '1.2rem', lineHeight: 1, filter: `drop-shadow(0 0 5px ${medal.glow})` }}>
-                        {medal.icon}
-                      </Typography>
-                    ) : (
-                      <Typography sx={{ fontWeight: 800, fontSize: '0.78rem', color: isMe ? '#a78bfa' : 'rgba(255,255,255,0.22)', fontVariantNumeric: 'tabular-nums' }}>
-                        {row.rank}
-                      </Typography>
-                    )}
-                  </Box>
+                      ...(isMe && {
+                        '&::before': {
+                          content: '""',
+                          position: 'absolute',
+                          left: 0, top: '18%', bottom: '18%',
+                          width: '3px',
+                          borderRadius: '0 3px 3px 0',
+                          background: '#fff',
+                        },
+                      }),
+                    }}
+                  >
+                    {/* Rank / Medal */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {medal ? (
+                        <Typography sx={{ fontSize: '1.2rem', lineHeight: 1, filter: `drop-shadow(0 0 5px ${medal.glow})` }}>
+                          {medal.icon}
+                        </Typography>
+                      ) : (
+                        <Typography sx={{ fontWeight: 800, fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>
+                          {row.rank}
+                        </Typography>
+                      )}
+                    </Box>
 
-                  {/* Name + progress bar */}
-                  <Box sx={{ minWidth: 0 }}>
-                    <Typography
-                      sx={{
-                        fontWeight: isMe ? 800 : 700,
-                        fontSize: '0.84rem',
-                        color: isMe ? '#e9d5ff' : '#e5e7eb',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        lineHeight: 1.2,
-                        mb: 0.55,
-                      }}
-                    >
-                      {row.display_name}
-                    </Typography>
-                    {/* Progress bar */}
-                    <Box sx={{ height: '3px', borderRadius: '99px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden', maxWidth: '160px' }}>
+                    {/* Name + progress bar */}
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography
+                        sx={{
+                          fontWeight: isMe ? 800 : 600,
+                          fontSize: '0.84rem',
+                          color: '#fff',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1.2,
+                          mb: 0.55,
+                        }}
+                      >
+                        {row.display_name}
+                      </Typography>
+                      {/* Progress bar */}
+                      <Box sx={{ height: '3px', borderRadius: '99px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden', maxWidth: '160px' }}>
+                        <Box
+                          sx={{
+                            height: '100%',
+                            width: `${barPct}%`,
+                            borderRadius: '99px',
+                            background: medal
+                              ? `linear-gradient(90deg, ${medal.color}, ${medal.color}80)`
+                              : 'linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.15))',
+                          }}
+                        />
+                      </Box>
+                    </Box>
+
+                    {/* DT count */}
+                    {(() => {
+                      const dt = statsMap[row.user_id]?.dtCount ?? 0;
+                      return (
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {dt > 0 ? (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, px: 0.7, py: 0.25, borderRadius: '6px', background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)' }}>
+                              <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#fbbf24' }}>⚡{dt}</Typography>
+                            </Box>
+                          ) : (
+                            <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', fontWeight: 600 }}>—</Typography>
+                          )}
+                        </Box>
+                      );
+                    })()}
+
+                    {/* Streak */}
+                    {(() => {
+                      const s = statsMap[row.user_id]?.streak ?? 0;
+                      const sl = streakLabel(s);
+                      return (
+                        <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: sl.color, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
+                          {sl.text}
+                        </Typography>
+                      );
+                    })()}
+
+                    {/* Points chip */}
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <Box
                         sx={{
-                          height: '100%',
-                          width: `${barPct}%`,
-                          borderRadius: '99px',
-                          background: medal
-                            ? `linear-gradient(90deg, ${medal.color}, ${medal.color}80)`
-                            : isMe
-                            ? 'linear-gradient(90deg, #7c3aed, #a78bfa)'
-                            : 'linear-gradient(90deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08))',
+                          px: 1.1, py: 0.35, borderRadius: '9px',
+                          background: medal ? medal.glow : 'rgba(255,255,255,0.1)',
+                          border: medal ? `1px solid ${medal.color}50` : '1px solid rgba(255,255,255,0.15)',
                         }}
-                      />
+                      >
+                        <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: medal ? medal.color : '#fff', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
+                          {row.total_points}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {/* Chevron */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Box
+                        sx={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: '6px',
+                          background: isExpanded ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'background 0.15s',
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontSize: '0.6rem',
+                            color: isExpanded ? '#fff' : 'rgba(255,255,255,0.4)',
+                            lineHeight: 1,
+                            transition: 'transform 0.2s, color 0.15s',
+                            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                            display: 'block',
+                          }}
+                        >
+                          ▾
+                        </Typography>
+                      </Box>
                     </Box>
                   </Box>
 
-                  {/* DT count */}
-                  {(() => {
-                    const dt = statsMap[row.user_id]?.dtCount ?? 0;
-                    return (
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {dt > 0 ? (
-                          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, px: 0.7, py: 0.25, borderRadius: '6px', background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)' }}>
-                            <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#fbbf24' }}>⚡{dt}</Typography>
-                          </Box>
-                        ) : (
-                          <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', fontWeight: 600 }}>—</Typography>
-                        )}
-                      </Box>
-                    );
-                  })()}
-
-                  {/* Streak */}
-                  {(() => {
-                    const s = statsMap[row.user_id]?.streak ?? 0;
-                    const sl = streakLabel(s);
-                    return (
-                      <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: sl.color, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
-                        {sl.text}
-                      </Typography>
-                    );
-                  })()}
-
-                  {/* Points chip */}
-                  <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  {/* ── Accordion: vertical match list ── */}
+                  {isExpanded && (
                     <Box
                       sx={{
-                        px: 1.1, py: 0.35, borderRadius: '9px',
-                        background: medal ? medal.glow : isMe ? 'rgba(167,139,250,0.18)' : 'rgba(255,255,255,0.05)',
-                        border: medal ? `1px solid ${medal.color}50` : isMe ? '1px solid rgba(167,139,250,0.38)' : '1px solid rgba(255,255,255,0.08)',
+                        borderBottom: isLast ? 'none' : '1px solid rgba(255,255,255,0.06)',
+                        background: '#fff',
                       }}
                     >
-                      <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: medal ? medal.color : isMe ? '#a78bfa' : '#f3f4f6', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
-                        {row.total_points}
-                      </Typography>
+                      {breakdown.length === 0 ? (
+                        <Box sx={{ px: 2, py: 1.5 }}>
+                          <Typography sx={{ fontSize: '0.72rem', color: 'rgba(0,0,0,0.3)', fontStyle: 'italic' }}>
+                            No graded matches yet
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <>
+                          {/* Accordion column headers */}
+                          <Box
+                            sx={{
+                              display: 'grid',
+                              gridTemplateColumns: '52px 1fr 64px',
+                              px: 2,
+                              pt: 1,
+                              pb: 0.4,
+                              borderBottom: '1px solid rgba(0,0,0,0.06)',
+                            }}
+                          >
+                            {['Match', 'Teams', 'Pts'].map((h, i) => (
+                              <Typography key={h} sx={{ fontSize: '0.52rem', fontWeight: 800, color: 'rgba(0,0,0,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: i === 2 ? 'right' : 'left' }}>
+                                {h}
+                              </Typography>
+                            ))}
+                          </Box>
+
+                          {/* Match rows */}
+                          {breakdown.map((m, mIdx) => {
+                            const pts = m.points ?? 0;
+                            const positive = pts > 0;
+                            const zero = pts === 0;
+                            const ptsColor = positive ? '#16a34a' : zero ? 'rgba(0,0,0,0.25)' : '#dc2626';
+                            const metaA = getTeamMeta(m.team_a ?? undefined);
+                            const metaB = getTeamMeta(m.team_b ?? undefined);
+                            const abbrTeam = (name: string | null) => {
+                              if (!name) return '?';
+                              const lower = name.toLowerCase();
+                              if (lower.includes('chennai') || lower.includes('csk')) return 'CSK';
+                              if (lower.includes('mumbai') || lower.includes('mi')) return 'MI';
+                              if (lower.includes('royal') || lower.includes('rcb') || lower.includes('bangalore') || lower.includes('bengaluru')) return 'RCB';
+                              if (lower.includes('kolkata') || lower.includes('kkr')) return 'KKR';
+                              if (lower.includes('sunrisers') || lower.includes('srh') || lower.includes('hyderabad')) return 'SRH';
+                              if (lower.includes('rajasthan') || lower.includes('rr')) return 'RR';
+                              if (lower.includes('delhi') || lower.includes('dc') || lower.includes('capitals')) return 'DC';
+                              if (lower.includes('punjab') || lower.includes('pbks') || lower.includes('kings')) return 'PBKS';
+                              if (lower.includes('gujarat') || lower.includes('gt') || lower.includes('titans')) return 'GT';
+                              if (lower.includes('lucknow') || lower.includes('lsg') || lower.includes('super giants')) return 'LSG';
+                              return name.slice(0, 3).toUpperCase();
+                            };
+                            const isLastMatch = mIdx === breakdown.length - 1;
+                            return (
+                              <Box
+                                key={m.match_id}
+                                sx={{
+                                  display: 'grid',
+                                  gridTemplateColumns: '52px 1fr 64px',
+                                  alignItems: 'center',
+                                  px: 2,
+                                  py: 0.75,
+                                  borderBottom: isLastMatch ? 'none' : '1px solid rgba(0,0,0,0.045)',
+                                }}
+                              >
+                                {/* Match number badge */}
+                                <Box
+                                  sx={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: 32,
+                                    height: 20,
+                                    borderRadius: '5px',
+                                    background: 'rgba(0,0,0,0.06)',
+                                    border: '1px solid rgba(0,0,0,0.1)',
+                                  }}
+                                >
+                                  <Typography sx={{ fontSize: '0.6rem', fontWeight: 800, color: 'rgba(0,0,0,0.45)', letterSpacing: '0.02em' }}>
+                                    M{m.match_number}
+                                  </Typography>
+                                </Box>
+
+                                {/* Teams */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                                  {/* Team A pill */}
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, px: 0.7, py: 0.25, borderRadius: '5px', background: `${metaA.color}22`, border: `1px solid ${metaA.color}40`, flexShrink: 0 }}>
+                                    {metaA.logo && <img src={metaA.logo} alt={m.team_a ?? ''} style={{ width: 12, height: 12, objectFit: 'contain' }} />}
+                                    <Typography sx={{ fontSize: '0.6rem', fontWeight: 800, color: metaA.color, letterSpacing: '0.02em' }}>
+                                      {abbrTeam(m.team_a)}
+                                    </Typography>
+                                  </Box>
+                                  <Typography sx={{ fontSize: '0.55rem', color: 'rgba(0,0,0,0.25)', fontWeight: 700, flexShrink: 0 }}>vs</Typography>
+                                  {/* Team B pill */}
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, px: 0.7, py: 0.25, borderRadius: '5px', background: `${metaB.color}22`, border: `1px solid ${metaB.color}40`, flexShrink: 0 }}>
+                                    {metaB.logo && <img src={metaB.logo} alt={m.team_b ?? ''} style={{ width: 12, height: 12, objectFit: 'contain' }} />}
+                                    <Typography sx={{ fontSize: '0.6rem', fontWeight: 800, color: metaB.color, letterSpacing: '0.02em' }}>
+                                      {abbrTeam(m.team_b)}
+                                    </Typography>
+                                  </Box>
+                                </Box>
+
+                                {/* Points */}
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                  <Box
+                                    sx={{
+                                      px: 0.9, py: 0.3, borderRadius: '6px',
+                                      background: positive ? 'rgba(22,163,74,0.1)' : zero ? 'rgba(0,0,0,0.04)' : 'rgba(220,38,38,0.1)',
+                                      border: positive ? '1px solid rgba(22,163,74,0.25)' : zero ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(220,38,38,0.25)',
+                                    }}
+                                  >
+                                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: ptsColor, fontVariantNumeric: 'tabular-nums' }}>
+                                      {pts > 0 ? `+${pts}` : pts}
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                              </Box>
+                            );
+                          })}
+                        </>
+                      )}
                     </Box>
-                  </Box>
+                  )}
                 </Box>
               );
             })}

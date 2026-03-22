@@ -2,14 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { Container, Typography, Box, Grid, CircularProgress } from '@mui/material';
 import SportsCricketIcon from '@mui/icons-material/SportsCricket';
 import Navbar from '../components/Navbar/Navbar';
+import { useAuth } from '../context/AuthContext';
 import { supabase } from '../config/supabaseClient';
 import MatchCard from '../components/MatchCard/MatchCard';
 import type { Match } from '../components/MatchCard/MatchCard';
 
 const Dashboard: React.FC = () => {
+  const { session } = useAuth();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string>('');
+  const [predictedMatchIds, setPredictedMatchIds] = useState<Set<string | number>>(new Set());
 
   /**
    * A match is "active" (Live Soon) if it starts within the next 24 hours.
@@ -50,6 +53,18 @@ const Dashboard: React.FC = () => {
       } else {
         setMatches((data as Match[]) || []);
       }
+
+      // Fetch which matches the user has already predicted
+      if (session?.user?.id) {
+        const { data: predData } = await supabase
+          .from('predictions')
+          .select('match_id')
+          .eq('user_id', session.user.id);
+        if (predData) {
+          setPredictedMatchIds(new Set(predData.map((r) => r.match_id)));
+        }
+      }
+
       setLoading(false);
     };
 
@@ -113,7 +128,7 @@ const Dashboard: React.FC = () => {
                 .slice(0, 5)
                 .map((m) => (
                   <Grid key={m.id} size={{ xs: 12, sm: 6, md: 4 }}>
-                    <MatchCard match={m} isActive={isMatchActive(m)} />
+                    <MatchCard match={m} isActive={isMatchActive(m)} hasPrediction={predictedMatchIds.has(m.id)} />
                   </Grid>
                 ))
             )}

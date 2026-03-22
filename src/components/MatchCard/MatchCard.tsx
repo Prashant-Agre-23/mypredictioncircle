@@ -19,6 +19,7 @@ export interface Match {
 interface MatchCardProps {
   match: Match;
   isActive: boolean;
+  hasPrediction?: boolean;
 }
 
 const formatDate = (dateStr: string) =>
@@ -44,7 +45,7 @@ const abbr = (name: string) => {
 
 
 
-const MatchCard = ({ match, isActive }: MatchCardProps) => {
+const MatchCard = ({ match, isActive, hasPrediction = false }: MatchCardProps) => {
   const isLive = isActive;
   const navigate = useNavigate();
   const metaA = match.team_a ? getTeamMeta(match.team_a) : { color: '#1a1a2e', logo: '' };
@@ -403,16 +404,22 @@ const MatchCard = ({ match, isActive }: MatchCardProps) => {
           mx: 2,
           mb: 2,
           borderRadius: '14px',
-          background: isLive ? '#000' : 'rgba(0,0,0,0.04)',
+          background: isLive
+            ? hasPrediction ? '#1b4332' : '#000'
+            : 'rgba(0,0,0,0.04)',
           py: 1,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          gap: 0.6,
           cursor: isLive ? 'pointer' : 'default',
           transition: 'background 0.18s ease, transform 0.15s ease',
-          '&:hover': isLive ? { background: '#222', transform: 'scale(1.01)' } : {},
+          '&:hover': isLive ? { background: hasPrediction ? '#2d6a4f' : '#222', transform: 'scale(1.01)' } : {},
         }}
       >
+        {isLive && hasPrediction && (
+          <Typography sx={{ fontSize: '0.78rem' }}>✅</Typography>
+        )}
         <Typography
           sx={{
             fontSize: '0.78rem',
@@ -421,7 +428,9 @@ const MatchCard = ({ match, isActive }: MatchCardProps) => {
             color: isLive ? '#fff' : 'rgba(0,0,0,0.28)',
           }}
         >
-          {isLive ? 'Make Prediction  →' : 'Prediction Opens Soon'}
+          {isLive
+            ? hasPrediction ? 'Predicted · Edit  ✏️' : 'Make Prediction  →'
+            : 'Prediction Opens Soon'}
         </Typography>
       </Box>
     </Paper>

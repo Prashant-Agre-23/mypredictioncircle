@@ -2,13 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Container, Typography, Box, Grid, CircularProgress } from '@mui/material';
 import SportsCricketIcon from '@mui/icons-material/SportsCricket';
 import Navbar from '../components/Navbar/Navbar';
-import { useAuth } from '../context/AuthContext';
 import { supabase } from '../config/supabaseClient';
 import MatchCard from '../components/MatchCard/MatchCard';
 import type { Match } from '../components/MatchCard/MatchCard';
 
 const Dashboard: React.FC = () => {
-  const { session } = useAuth();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string>('');
@@ -71,7 +69,7 @@ const Dashboard: React.FC = () => {
         ) : (
           <Grid container spacing={2}>
             {fetchError ? (
-              <Grid item xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <Box
                   sx={{
                     textAlign: 'center',
@@ -90,7 +88,7 @@ const Dashboard: React.FC = () => {
                 </Box>
               </Grid>
             ) : matches.length === 0 ? (
-              <Grid item xs={12}>
+              <Grid size={{ xs: 12 }}>
                 <Box
                   sx={{
                     textAlign: 'center',

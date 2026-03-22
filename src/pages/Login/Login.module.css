@@ -1,219 +1,255 @@
+/* ─── Page Shell ─────────────────────────────────────────────────── */
 .loginContainer {
   min-height: 100vh;
   width: 100%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #f5f5f7;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  margin: 0;
-  position: relative;
+  align-items: stretch;
   overflow: hidden;
-  box-sizing: border-box;
 }
 
-/* Cricket-themed decorative elements */
-.loginContainer::before {
-  content: '🏏';
-  position: absolute;
-  top: 10%;
-  left: 5%;
-  font-size: 4rem;
-  opacity: 0.75;
-  transform: rotate(-25deg);
-  z-index: 0;
-  animation: float 6s ease-in-out infinite;
+/* ─── Left Brand Panel (desktop only) ───────────────────────────── */
+.brandPanel {
+  display: none;
 }
 
-.loginContainer::after {
-  content: '🏆';
-  position: absolute;
-  bottom: 15%;
-  right: 8%;
-  font-size: 3.5rem;
-  opacity: 0.72;
-  z-index: 0;
-  animation: float 8s ease-in-out infinite reverse;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px) rotate(-25deg);
-  }
-  50% {
-    transform: translateY(-30px) rotate(-25deg);
+@media (min-width: 900px) {
+  .brandPanel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 46%;
+    flex-shrink: 0;
+    background: #000;
+    padding: 3rem 3.5rem;
+    position: relative;
+    overflow: hidden;
   }
 }
 
-.decorativeCircle1 {
+/* Subtle grid pattern overlay */
+.brandPanel::before {
+  content: '';
   position: absolute;
-  top: -50px;
-  left: -50px;
-  width: 300px;
-  height: 300px;
-  background-color: rgba(255, 193, 7, 0.08);
-  border-radius: 50%;
-  box-shadow: inset 0 0 50px rgba(255, 193, 7, 0.05);
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
 }
 
-.decorativeCircle2 {
+/* Glowing orb top-right */
+.brandPanel::after {
+  content: '';
   position: absolute;
-  bottom: -100px;
-  right: -100px;
-  width: 400px;
-  height: 400px;
-  background-color: rgba(255, 152, 0, 0.05);
-  border-radius: 50%;
-  box-shadow: inset 0 0 80px rgba(255, 152, 0, 0.03);
+  top: -120px;
+  right: -120px;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%);
+  pointer-events: none;
 }
 
-.contentWrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  align-items: center;
-  justify-content: center;
+.brandTop {
   position: relative;
   z-index: 1;
-  width: 100%;
-  height: 100vh;
-  padding: 1.5rem;
 }
 
-@media (min-width: 960px) {
-  .contentWrapper {
-    gap: 2.5rem;
-    padding: 0 5%;
-  }
+.brandLogoRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 4rem;
 }
 
-.welcomeSection {
+.brandLogoBox {
+  width: 40px;
+  height: 40px;
+  background: #fff;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.brandLogoIcon {
+  font-size: 1.3rem !important;
+  color: #000 !important;
+}
+
+.brandAppName {
+  font-weight: 800 !important;
+  color: #fff !important;
+  font-size: 1.05rem !important;
+  letter-spacing: -0.01em !important;
+  line-height: 1 !important;
+}
+
+.brandHeadline {
+  font-weight: 800 !important;
+  color: #fff !important;
+  font-size: 2.6rem !important;
+  line-height: 1.15 !important;
+  letter-spacing: -0.03em !important;
+  margin-bottom: 1.2rem !important;
+}
+
+.brandHeadlineAccent {
+  color: rgba(255,255,255,0.4);
+}
+
+.brandSubline {
+  color: rgba(255,255,255,0.45) !important;
+  font-size: 0.97rem !important;
+  line-height: 1.65 !important;
+  max-width: 320px;
+}
+
+/* Feature pills */
+.brandFeatures {
   display: flex;
   flex-direction: column;
+  gap: 0.85rem;
+  position: relative;
+  z-index: 1;
+  margin-top: 3rem;
+}
+
+.featurePill {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  color: white;
-  text-align: center;
-  margin-bottom: 2rem;
-  animation: slideDown 0.6s ease-out;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  transition: background 0.2s ease;
 }
 
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.featurePill:hover {
+  background: rgba(255,255,255,0.09);
 }
 
-@media (min-width: 960px) {
-  .welcomeSection {
-    margin-bottom: 0;
-  }
-}
-
-.trophyIconContainer {
-  width: 100px;
-  height: 100px;
-  background: linear-gradient(135deg, rgba(255, 193, 7, 0.2) 0%, rgba(255, 152, 0, 0.2) 100%);
-  border-radius: 50%;
+.featurePillIcon {
+  width: 34px;
+  height: 34px;
+  background: #fff;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 1.5rem;
-  backdrop-filter: blur(10px);
-  border: 3px solid rgba(255, 193, 7, 0.5);
-  transition: all 0.3s ease;
-  box-shadow: 0 0 30px rgba(255, 193, 7, 0.3);
-}
-
-.trophyIconContainer:hover {
-  background: linear-gradient(135deg, rgba(255, 193, 7, 0.3) 0%, rgba(255, 152, 0, 0.3) 100%);
-  transform: scale(1.1) rotate(5deg);
-  box-shadow: 0 0 50px rgba(255, 193, 7, 0.5);
-}
-
-@media (min-width: 960px) {
-  .trophyIconContainer {
-    width: 150px;
-    height: 150px;
-    border-width: 4px;
-  }
-}
-
-.mainIcon {
-  font-size: 60px;
-  color: #ffc107;
-  filter: drop-shadow(0 0 10px rgba(255, 193, 7, 0.6));
-}
-
-@media (min-width: 960px) {
-  .mainIcon {
-    font-size: 80px;
-  }
-}
-
-.welcomeTitle {
-  font-weight: 700;
-  margin-bottom: 1rem;
-  font-size: 2rem;
-  letter-spacing: -0.5px;
-}
-
-@media (max-width: 599px) {
-  .welcomeTitle {
-    font-size: 1.5rem;
-  }
-}
-
-.welcomeSubtitle {
-  opacity: 0.95;
+  flex-shrink: 0;
   font-size: 1rem;
-  line-height: 1.6;
-  max-width: 400px;
 }
 
-@media (max-width: 959px) {
-  .welcomeSubtitle {
+.featurePillText {
+  color: rgba(255,255,255,0.75) !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+}
+
+.brandBottom {
+  position: relative;
+  z-index: 1;
+  color: rgba(255,255,255,0.25);
+  font-size: 0.75rem;
+}
+
+/* ─── Right Form Panel ───────────────────────────────────────────── */
+.formPanel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  background: #f5f5f7;
+  min-height: 100vh;
+}
+
+.formInner {
+  width: 100%;
+  max-width: 420px;
+  animation: fadeUp 0.45s ease-out both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Mobile-only brand strip */
+.mobileBrandStrip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 2rem;
+}
+
+@media (min-width: 900px) {
+  .mobileBrandStrip {
     display: none;
   }
 }
 
-.formCard {
-  padding: 2rem;
-  border-radius: 1.5rem;
-  background-color: white;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
-  width: 100%;
-  max-width: 420px;
-  animation: slideUp 0.6s ease-out;
+.mobileLogoBox {
+  width: 36px;
+  height: 36px;
+  background: #000;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.mobileLogoIcon {
+  font-size: 1.15rem !important;
+  color: #fff !important;
+}
+
+.mobileAppName {
+  font-weight: 800 !important;
+  color: #000 !important;
+  font-size: 1rem !important;
+}
+
+/* Card header */
+.formHeading {
+  font-weight: 800 !important;
+  color: #000 !important;
+  font-size: 1.75rem !important;
+  letter-spacing: -0.03em !important;
+  line-height: 1.2 !important;
+  margin-bottom: 0.4rem !important;
+}
+
+.formSubheading {
+  color: rgba(0,0,0,0.45) !important;
+  font-size: 0.9rem !important;
+  margin-bottom: 2rem !important;
+}
+
+/* ─── Form Card ──────────────────────────────────────────────────── */
+.formCard {
+  background: #fff !important;
+  border-radius: 24px !important;
+  padding: 2rem 2rem 1.75rem !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.05) !important;
+  border: 1px solid rgba(0,0,0,0.06) !important;
 }
 
 @media (max-width: 599px) {
   .formCard {
-    padding: 1.5rem;
-    border-radius: 1rem;
+    padding: 1.5rem 1.25rem 1.5rem !important;
+    border-radius: 20px !important;
   }
 }
 
 .errorAlert {
-  width: 100%;
-  margin-bottom: 2rem !important;
-  border-radius: 0.75rem;
+  margin-bottom: 1.25rem !important;
+  border-radius: 12px !important;
+  font-size: 0.875rem !important;
 }
 
 .form {
@@ -221,170 +257,193 @@
   flex-direction: column;
 }
 
-.checkboxLabel {
-  color: #333;
-  font-weight: 500;
-  margin-left: 0.5rem;
-  user-select: none;
-}
-
-.fieldLabel {
-  font-weight: 700;
-  color: #333;
-  margin-bottom: 0.5rem !important;
-  font-size: 0.95rem;
-  display: block;
-  word-break: break-word;
-}
-
+/* ─── Field Labels ───────────────────────────────────────────────── */
 .fieldSection {
   margin-bottom: 1rem;
 }
 
-.textField {
-  margin-bottom: 0;
+.fieldLabel {
+  font-weight: 700 !important;
+  color: #000 !important;
+  font-size: 0.82rem !important;
+  letter-spacing: 0.03em !important;
+  text-transform: uppercase !important;
+  margin-bottom: 0.45rem !important;
+  display: block;
 }
 
+/* ─── Text Fields ────────────────────────────────────────────────── */
 .textField :global(.MuiOutlinedInput-root) {
-  background-color: #f5f5f5;
-  border-radius: 0.5rem;
-  border: none;
-  transition: all 0.3s ease;
+  background: #f5f5f7;
+  border-radius: 12px !important;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.textField :global(.MuiOutlinedInput-root fieldset) {
+  border: 1.5px solid rgba(0,0,0,0.1) !important;
+  border-radius: 12px !important;
+  transition: border-color 0.18s ease;
 }
 
 .textField :global(.MuiOutlinedInput-root:hover fieldset) {
-  border: none;
-}
-
-.textField :global(.MuiOutlinedInput-root.Mui-focused fieldset) {
-  border: none;
+  border-color: rgba(0,0,0,0.25) !important;
 }
 
 .textField :global(.MuiOutlinedInput-root.Mui-focused) {
-  background-color: #fff;
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.07);
 }
 
-.textField :global(.MuiInputBase-input::placeholder) {
-  color: #999;
-  opacity: 1;
+.textField :global(.MuiOutlinedInput-root.Mui-focused fieldset) {
+  border-color: #000 !important;
+  border-width: 1.5px !important;
 }
 
 .textField :global(.MuiInputBase-input) {
-  color: #333;
-  font-size: 1rem;
-  font-weight: 500;
+  color: #000 !important;
+  font-size: 0.93rem !important;
+  font-weight: 500 !important;
+  padding: 0.75rem 0.75rem 0.75rem 0 !important;
+}
+
+.textField :global(.MuiInputBase-input::placeholder) {
+  color: rgba(0,0,0,0.3) !important;
+  opacity: 1 !important;
 }
 
 .textField :global(.MuiInputBase-input:disabled) {
-  background-color: #f0f0f0;
-  color: #ccc;
+  opacity: 0.5;
 }
 
 .iconColor {
-  color: #999;
-  margin-right: 0.75rem;
-  font-size: 1.2rem;
-  transition: color 0.3s ease;
+  color: rgba(0,0,0,0.3) !important;
+  font-size: 1.1rem !important;
   flex-shrink: 0;
+  transition: color 0.18s ease;
 }
 
-.rememberMeSection {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  margin-bottom: 2rem;
-  gap: 0.5rem;
+/* Icon turns black when field is focused (parent trick via :focus-within) */
+.textField:focus-within .iconColor {
+  color: #000 !important;
 }
 
-.checkbox {
-  color: #999 !important;
-}
-
-.checkbox :global(.MuiCheckbox-root.Mui-checked) {
-  color: #667eea !important;
-}
-
-.checkbox :global(.MuiCheckbox-root:disabled) {
-  color: #ddd !important;
-}
-
-.checkboxLabel {
-  color: #333;
-  font-weight: 500;
-  margin-left: 0.5rem;
-  user-select: none;
-}
-
+/* ─── Visibility Toggle ──────────────────────────────────────────── */
 .visibilityToggleButton {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0.5rem;
+  padding: 0.4rem;
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: #999;
-  transition: all 0.2s ease;
-  border-radius: 0.25rem;
+  color: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
 .visibilityToggleButton:hover:not(:disabled) {
-  color: #667eea;
-  background-color: rgba(102, 126, 234, 0.05);
+  color: #000;
+  background: rgba(0,0,0,0.05);
 }
 
 .visibilityToggleButton:focus {
-  outline: 2px solid rgba(102, 126, 234, 0.5);
+  outline: 2px solid rgba(0,0,0,0.2);
   outline-offset: 2px;
 }
 
 .visibilityToggleButton:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .visibilityIcon {
-  font-size: 1.25rem;
+  font-size: 1.15rem !important;
 }
 
-/* ========================================================================== */
-/* Login Button Styles */
-/* ========================================================================== */
-
-.loginButton {
-  padding: 1rem;
-  font-size: 1rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 0.75rem;
+/* ─── Remember Me ────────────────────────────────────────────────── */
+.rememberMeSection {
+  display: flex;
+  align-items: center;
   margin-bottom: 1.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-  color: white;
-  border: none;
-  cursor: pointer;
+}
+
+.checkbox {
+  color: rgba(0,0,0,0.2) !important;
+  padding: 0.25rem !important;
+}
+
+.checkbox:global(.Mui-checked) {
+  color: #000 !important;
+}
+
+.checkboxLabel {
+  color: rgba(0,0,0,0.55) !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  user-select: none;
+}
+
+/* ─── Login Button ───────────────────────────────────────────────── */
+.loginButton {
+  background: #000 !important;
+  color: #fff !important;
+  border-radius: 14px !important;
+  padding: 0.85rem 1rem !important;
+  font-size: 0.92rem !important;
+  font-weight: 700 !important;
+  text-transform: none !important;
+  letter-spacing: 0.01em !important;
+  box-shadow: none !important;
+  border: none !important;
+  transition: opacity 0.15s ease, transform 0.15s ease !important;
+  margin-bottom: 0 !important;
 }
 
 .loginButton:hover:not(:disabled) {
-  background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
-  transform: translateY(-2px);
+  opacity: 0.86 !important;
+  transform: translateY(-1px) !important;
 }
 
 .loginButton:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+  transform: translateY(0) !important;
 }
 
 .loginButton:disabled {
-  opacity: 0.65;
+  opacity: 0.45 !important;
   cursor: not-allowed;
 }
 
-.loginButton:focus {
-  outline: 2px solid rgba(102, 126, 234, 0.5);
-  outline-offset: 2px;
+/* ─── Divider Row ────────────────────────────────────────────────── */
+.orDivider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0 0;
 }
+
+.orLine {
+  flex: 1;
+  height: 1px;
+  background: rgba(0,0,0,0.08);
+}
+
+.orText {
+  color: rgba(0,0,0,0.3) !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em !important;
+  flex-shrink: 0;
+}
+
+/* ─── Footer Note ────────────────────────────────────────────────── */
+.formFooter {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.footerNote {
+  color: rgba(0,0,0,0.35) !important;
+  font-size: 0.78rem !important;
+  line-height: 1.6 !important;
+}
+

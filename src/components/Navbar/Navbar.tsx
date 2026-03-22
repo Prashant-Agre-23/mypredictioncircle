@@ -24,23 +24,20 @@ import {
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import HomeIcon from '@mui/icons-material/Home';
-import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
 import NotificationsIcon from '@mui/icons-material/Notifications';
-import SettingsIcon from '@mui/icons-material/Settings';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import SportsCricketIcon from '@mui/icons-material/SportsCricket';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { useAuth } from '../../context/AuthContext';
 import styles from './Navbar.module.css';
 
-/**
- * Navigation bar component with Google-inspired design
- * Features: Professional Material Design, responsive layout, user menu
- * Mobile-friendly with hamburger menu
- */
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { session, signOut } = useAuth();
+  const { session, signOut, isAdmin } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -50,10 +47,7 @@ const Navbar = () => {
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
+  const handleMenuClose = () => setAnchorEl(null);
 
   const handleLogout = async () => {
     handleMenuClose();
@@ -67,267 +61,186 @@ const Navbar = () => {
     setMobileDrawerOpen(false);
   };
 
-  const handleDrawerToggle = () => {
-    setMobileDrawerOpen(!mobileDrawerOpen);
-  };
-
-  /**
-   * Determines if a nav link is active
-   */
-  const isActive = (path: string): boolean => {
-    return location.pathname === path;
-  };
-
+  const isActive = (path: string) => location.pathname === path;
   const userInitial = session?.user?.email?.charAt(0).toUpperCase() || 'U';
+
+  const navItems = [
+    { label: 'Dashboard', path: '/dashboard', icon: <HomeIcon /> },
+    { label: 'My Predictions', path: '/my-predictions', icon: <SportsCricketIcon /> },
+    { label: 'Leaderboard', path: '/leaderboard', icon: <BarChartIcon /> },
+    { label: 'Rules', path: '/rules', icon: <MenuBookIcon /> },
+    ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: <AdminPanelSettingsIcon /> }] : []),
+  ];
 
   return (
     <>
       <AppBar position="sticky" className={styles.navbar}>
         <Toolbar className={styles.toolbar}>
-          {/* Logo/Brand Section */}
+
+          {/* ── Logo ── */}
           <Box className={styles.logoSection}>
             <Box className={styles.logo} onClick={() => navigate('/dashboard')}>
               <Box className={styles.logoIconContainer}>
-                <EmojiEventsIcon className={styles.logoIcon} />
+                <svg width="20" height="20" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="20" cy="20" r="18" fill="#000" />
+                  <path d="M20 6 L26 14 L34 16 L28 23 L30 32 L20 28 L10 32 L12 23 L6 16 L14 14 Z" fill="#fff" opacity="0.15"/>
+                  <circle cx="20" cy="20" r="10" stroke="#fff" strokeWidth="2" fill="none"/>
+                  <circle cx="20" cy="20" r="5" fill="#fff" opacity="0.9"/>
+                  <circle cx="20" cy="20" r="2" fill="#000"/>
+                  <line x1="20" y1="2" x2="20" y2="10" stroke="#fff" strokeWidth="2" strokeLinecap="round" opacity="0.6"/>
+                  <line x1="20" y1="30" x2="20" y2="38" stroke="#fff" strokeWidth="2" strokeLinecap="round" opacity="0.6"/>
+                  <line x1="2" y1="20" x2="10" y2="20" stroke="#fff" strokeWidth="2" strokeLinecap="round" opacity="0.6"/>
+                  <line x1="30" y1="20" x2="38" y2="20" stroke="#fff" strokeWidth="2" strokeLinecap="round" opacity="0.6"/>
+                </svg>
               </Box>
               <Box className={styles.brandInfo}>
-                <Typography variant="h6" className={styles.brandName}>
-                  Cricket
-                </Typography>
-                <Typography variant="caption" className={styles.brandSubtitle}>
-                  Predictions
+                <Typography className={styles.brandName}>
+                  <span style={{ color: '#fff' }}>sahi</span><span style={{ color: 'rgba(255,255,255,0.55)' }}>Predict</span>
                 </Typography>
               </Box>
             </Box>
           </Box>
 
-          {/* Desktop Navigation Links */}
+          {/* ── Desktop Nav Links ── */}
           {!isMobile && (
             <Box className={styles.navLinks}>
-              <Button
-                color="inherit"
-                className={`${styles.navButton} ${
-                  isActive('/dashboard') ? styles.active : ''
-                }`}
-                startIcon={<HomeIcon sx={{ fontSize: '1.3rem' }} />}
-                onClick={() => handleNavigation('/dashboard')}
-              >
-                Dashboard
-              </Button>
-              <Button
-                color="inherit"
-                className={`${styles.navButton} ${
-                  isActive('/leaderboard') ? styles.active : ''
-                }`}
-                startIcon={<EmojiEventsIcon sx={{ fontSize: '1.3rem' }} />}
-                onClick={() => handleNavigation('/leaderboard')}
-              >
-                Leaderboard
-              </Button>
+              {navItems.map((item) => (
+                <Button
+                  key={item.path}
+                  className={`${styles.navButton} ${isActive(item.path) ? styles.active : ''}`}
+                  startIcon={item.icon}
+                  onClick={() => handleNavigation(item.path)}
+                >
+                  {item.label}
+                </Button>
+              ))}
             </Box>
           )}
 
-          {/* Right Section: Actions & User Menu */}
+          {/* ── Right Section ── */}
           <Box className={styles.rightSection}>
-            {/* Notification Icon */}
             {!isMobile && (
               <Tooltip title="Notifications">
-                <IconButton color="inherit" className={styles.iconButton}>
+                <IconButton className={styles.iconButton}>
                   <Badge badgeContent={3} color="error">
-                    <NotificationsIcon sx={{ fontSize: '1.3rem' }} />
+                    <NotificationsIcon sx={{ fontSize: '1.2rem' }} />
                   </Badge>
                 </IconButton>
               </Tooltip>
             )}
 
-            {/* Settings Icon */}
+            {/* Desktop avatar → dropdown */}
             {!isMobile && (
-              <Tooltip title="Settings">
-                <IconButton color="inherit" className={styles.iconButton}>
-                  <SettingsIcon sx={{ fontSize: '1.3rem' }} />
+              <Tooltip title={session?.user?.email || 'Account'}>
+                <IconButton onClick={handleMenuOpen} className={styles.userButtonIcon} sx={{ ml: 0.25 }}>
+                  <Avatar className={styles.avatar}>{userInitial}</Avatar>
                 </IconButton>
               </Tooltip>
             )}
 
-            {/* Desktop User Menu */}
-            {!isMobile && (
-              <Tooltip title={session?.user?.email || 'User'}>
-                <IconButton
-                  onClick={handleMenuOpen}
-                  className={styles.userButtonIcon}
-                  sx={{ ml: 0.5 }}
-                >
-                  <Avatar
-                    className={styles.avatar}
-                    sx={{
-                      background: 'linear-gradient(135deg, #4285f4 0%, #34a853 100%)',
-                      width: 36,
-                      height: 36,
-                      fontSize: '0.9rem',
-                      fontWeight: 700,
-                      border: '2px solid rgba(255,255,255,0.3)',
-                    }}
-                  >
-                    {userInitial}
-                  </Avatar>
-                </IconButton>
-              </Tooltip>
-            )}
-
-            {/* Desktop Dropdown Menu */}
+            {/* Desktop dropdown */}
             {!isMobile && (
               <Menu
                 anchorEl={anchorEl}
                 open={Boolean(anchorEl)}
                 onClose={handleMenuClose}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'right',
-                }}
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-                PaperProps={{
-                  className: styles.menuPaper,
-                }}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                PaperProps={{ className: styles.menuPaper }}
+                MenuListProps={{ className: styles.menuList }}
               >
+                {/* Black header strip */}
                 <Box className={styles.menuHeader}>
-                  <Avatar
-                    sx={{
-                      background: 'linear-gradient(135deg, #4285f4 0%, #34a853 100%)',
-                      width: 40,
-                      height: 40,
-                      fontSize: '1rem',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {userInitial}
-                  </Avatar>
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#202124' }}>
+                  <Avatar className={styles.menuHeaderAvatar}>{userInitial}</Avatar>
+                  <Box sx={{ overflow: 'hidden' }}>
+                    <Typography className={styles.menuHeaderEmail}>
                       {session?.user?.email}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: '#5f6368' }}>
-                      Your Account
-                    </Typography>
+                    <Typography className={styles.menuHeaderRole}>Member</Typography>
                   </Box>
                 </Box>
-                <Divider sx={{ my: 1 }} />
+                <Divider sx={{ my: 0.5 }} />
                 <MenuItem onClick={handleLogout} className={styles.logoutMenuItem}>
                   <LogoutIcon className={styles.logoutIcon} />
-                  <Typography variant="body2">Sign Out</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.88rem' }}>
+                    Sign Out
+                  </Typography>
                 </MenuItem>
               </Menu>
             )}
 
-            {/* Mobile Hamburger Menu */}
+            {/* Mobile hamburger */}
             {isMobile && (
-              <IconButton
-                color="inherit"
-                onClick={handleDrawerToggle}
-                className={styles.hamburgerIcon}
-              >
-                <MenuIcon sx={{ fontSize: '1.5rem' }} />
+              <IconButton onClick={() => setMobileDrawerOpen((v) => !v)} className={styles.hamburgerIcon}>
+                {mobileDrawerOpen
+                  ? <CloseIcon sx={{ fontSize: '1.4rem' }} />
+                  : <MenuIcon sx={{ fontSize: '1.4rem' }} />}
               </IconButton>
             )}
           </Box>
         </Toolbar>
       </AppBar>
 
-      {/* Mobile Drawer */}
-      {isMobile && (
-        <Drawer
-          anchor="right"
-          open={mobileDrawerOpen}
-          onClose={handleDrawerToggle}
-          PaperProps={{
-            className: styles.mobilePaper,
-          }}
-        >
-          <Box className={styles.mobileDrawerContent}>
-            <Box className={styles.mobileHeader}>
-              <Box className={styles.mobileLogo}>
-                <EmojiEventsIcon sx={{ fontSize: '1.5rem', color: '#ffc107' }} />
-                <Typography sx={{ fontWeight: 700, color: '#202124', ml: 1 }}>
-                  Cricket Predictions
+      {/* ── Mobile Drawer ── */}
+      <Drawer
+        anchor="right"
+        open={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
+        ModalProps={{ keepMounted: true }}
+        PaperProps={{
+          className: styles.mobilePaper,
+          sx: { top: { xs: '56px', sm: '60px' }, height: { xs: 'calc(100% - 56px)', sm: 'calc(100% - 60px)' } },
+        }}
+      >
+        <Box className={styles.mobileDrawerContent}>
+
+          {/* Nav list */}
+          <List className={styles.mobileNavList}>
+            {navItems.map((item) => (
+              <ListItem key={item.path} disablePadding>
+                <ListItemButton
+                  onClick={() => handleNavigation(item.path)}
+                  selected={isActive(item.path)}
+                  className={styles.mobileNavItem}
+                >
+                  <ListItemIcon className={styles.mobileNavIcon}>{item.icon}</ListItemIcon>
+                  <ListItemText
+                    primary={item.label}
+                    primaryTypographyProps={{
+                      sx: { fontWeight: 600, fontSize: '0.9rem', color: 'inherit' },
+                    }}
+                  />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+
+          {/* User + logout */}
+          <Box className={styles.mobileUserSection}>
+            <Box className={styles.mobileUserCard}>
+              <Avatar className={styles.mobileUserAvatar}>{userInitial}</Avatar>
+              <Box sx={{ overflow: 'hidden' }}>
+                <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: '#000', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {session?.user?.email}
+                </Typography>
+                <Typography sx={{ fontSize: '0.68rem', color: 'rgba(0,0,0,0.45)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                  Member
                 </Typography>
               </Box>
-              <IconButton onClick={handleDrawerToggle} size="small">
-                <CloseIcon />
-              </IconButton>
             </Box>
-
-            <Divider />
-
-            <List sx={{ flex: 1 }}>
-              <ListItem disablePadding>
-                <ListItemButton
-                  onClick={() => handleNavigation('/dashboard')}
-                  selected={isActive('/dashboard')}
-                  className={styles.mobileNavItem}
-                >
-                  <ListItemIcon>
-                    <HomeIcon sx={{ color: '#4285f4' }} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Dashboard"
-                    primaryTypographyProps={{ sx: { fontWeight: 500 } }}
-                  />
-                </ListItemButton>
-              </ListItem>
-
-              <ListItem disablePadding>
-                <ListItemButton
-                  onClick={() => handleNavigation('/leaderboard')}
-                  selected={isActive('/leaderboard')}
-                  className={styles.mobileNavItem}
-                >
-                  <ListItemIcon>
-                    <EmojiEventsIcon sx={{ color: '#ffc107' }} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Leaderboard"
-                    primaryTypographyProps={{ sx: { fontWeight: 500 } }}
-                  />
-                </ListItemButton>
-              </ListItem>
-            </List>
-
-            <Divider />
-
-            <Box className={styles.mobileUserSection}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                <Avatar
-                  sx={{
-                    background: 'linear-gradient(135deg, #4285f4 0%, #34a853 100%)',
-                    width: 40,
-                    height: 40,
-                    fontWeight: 700,
-                  }}
-                >
-                  {userInitial}
-                </Avatar>
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#202124' }}>
-                    {session?.user?.email}
-                  </Typography>
-                </Box>
-              </Box>
-              <Button
-                fullWidth
-                variant="outlined"
-                color="error"
-                startIcon={<LogoutIcon />}
-                onClick={handleLogout}
-                className={styles.mobileLogoutButton}
-              >
-                Sign Out
-              </Button>
-            </Box>
+            <Button
+              fullWidth
+              variant="contained"
+              startIcon={<LogoutIcon sx={{ fontSize: '1rem !important' }} />}
+              onClick={handleLogout}
+              className={styles.mobileLogoutButton}
+            >
+              Sign Out
+            </Button>
           </Box>
-        </Drawer>
-      )}
+
+        </Box>
+      </Drawer>
     </>
   );
 };

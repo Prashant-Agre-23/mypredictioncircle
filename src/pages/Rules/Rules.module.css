@@ -1,0 +1,412 @@
+/* ─── Page Shell ─────────────────────────────────────────────────── */
+.backBar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #fff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 0.75rem 1.25rem;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #000;
+  text-decoration: none;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.backLink:hover {
+  opacity: 1;
+}
+
+.rulesPage {
+  min-height: 100vh;
+  background: #f5f5f7;
+  color: #000;
+}
+
+.rulesPage :global(.MuiTypography-root) {
+  color: #000;
+}
+
+/* ─── Container ──────────────────────────────────────────────────── */
+.contentContainer {
+  padding-top: 2rem !important;
+  padding-bottom: 4rem !important;
+}
+
+/* ─── Hero ───────────────────────────────────────────────────────── */
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 2.5rem;
+  padding: 2rem 1.75rem;
+  border-radius: 24px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.02) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.heroTitle {
+  font-weight: 900 !important;
+  letter-spacing: -0.02em !important;
+  font-size: 2.2rem !important;
+  line-height: 1.1 !important;
+}
+
+.heroSubtitle {
+  color: rgba(0, 0, 0, 0.55);
+  max-width: 860px;
+  line-height: 1.65;
+  font-size: 0.97rem;
+}
+
+/* ─── Section Titles ─────────────────────────────────────────────── */
+.sectionTitle {
+  font-weight: 800 !important;
+  margin-top: 2.5rem !important;
+  margin-bottom: 0 !important;
+  font-size: 1.1rem !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.45) !important;
+}
+
+.sectionDivider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: 0.6rem 0 1.25rem;
+}
+
+/* ─── Cards Grid ─────────────────────────────────────────────────── */
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  column-gap: 1rem;
+  row-gap: 1rem;
+  align-items: stretch;
+}
+
+.stagesGrid {
+  margin-bottom: 0;
+}
+
+.specialsGrid {
+  margin-bottom: 0;
+}
+
+/* ─── Stage Card ─────────────────────────────────────────────────── */
+.stageCard {
+  grid-column: span 12;
+  padding: 1.5rem 1.4rem;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05), 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.stageCard:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.09), 0 2px 6px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+.stageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.stageLabelRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.stageName {
+  font-weight: 800 !important;
+  font-size: 1.1rem !important;
+  letter-spacing: -0.01em !important;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.22rem 0.7rem;
+  border-radius: 999px;
+  background: #f0f0f0;
+  color: rgba(0, 0, 0, 0.7);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border: none;
+}
+
+.matchesText {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 0.88rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* ─── Points Rows ────────────────────────────────────────────────── */
+.pointsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+.pointsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 12px;
+  background: #f8f8f8;
+  border: none;
+  transition: background 0.15s ease;
+}
+
+.pointsRow:hover {
+  background: #f0f0f0;
+}
+
+.pointsLabel {
+  color: rgba(0, 0, 0, 0.72);
+  font-weight: 600;
+  flex: 1;
+  font-size: 0.92rem;
+}
+
+.pointsValue {
+  font-weight: 800;
+  font-size: 0.92rem;
+  padding: 0.22rem 0.7rem;
+  border-radius: 999px;
+  background: #000;
+  color: #fff;
+  min-width: 76px;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+/* ─── Special Cards ──────────────────────────────────────────────── */
+.specialCard {
+  grid-column: span 12;
+  padding: 1.4rem 1.4rem;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05), 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.specialCard:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.09), 0 2px 6px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+.specialTop {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 0.85rem;
+}
+
+.specialIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.specialIcon svg {
+  color: #fff;
+  font-size: 1.25rem;
+}
+
+.specialName {
+  font-weight: 800 !important;
+  font-size: 1rem !important;
+  letter-spacing: -0.01em !important;
+}
+
+.specialDesc {
+  color: rgba(0, 0, 0, 0.58);
+  line-height: 1.65;
+  font-size: 0.92rem;
+}
+
+/* ─── Note / Other Rules Card ────────────────────────────────────── */
+.noteCard {
+  padding: 1.5rem 1.5rem;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: #ffffff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05), 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.noteText {
+  color: rgba(0, 0, 0, 0.78);
+  line-height: 1.7;
+  font-size: 0.95rem;
+}
+
+.list {
+  margin: 0.85rem 0 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.list li {
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 1.6;
+  font-size: 0.93rem;
+}
+
+/* ─── Bonus Stage ────────────────────────────────────────────────── */
+.bonusGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-bottom: 0;
+}
+
+.bonusCard {
+  padding: 1.5rem 1.4rem;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05), 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.bonusCardTitle {
+  font-weight: 800 !important;
+  font-size: 1rem !important;
+  letter-spacing: -0.01em !important;
+  margin-bottom: 1rem !important;
+}
+
+.pointsValueBlue {
+  background: #1565c0 !important;
+}
+
+.pointsValueAmber {
+  background: #e65100 !important;
+}
+
+/* ─── Special Situations List ────────────────────────────────────── */
+.situationsList {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.situationsList li {
+  color: rgba(0, 0, 0, 0.72);
+  line-height: 1.65;
+  font-size: 0.93rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.situationsList li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.situationsList li:first-child {
+  padding-top: 0;
+}
+
+/* ─── Rain Card ──────────────────────────────────────────────────── */
+.rainCard {
+  padding: 1.5rem 1.5rem;
+  border-radius: 20px;
+  border: 1px solid rgba(230, 81, 0, 0.25);
+  background: #fff8f0;
+  box-shadow: 0 4px 20px rgba(230, 81, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.rainCardTop {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.rainIcon {
+  color: #e65100 !important;
+  font-size: 1.5rem !important;
+  flex-shrink: 0;
+}
+
+.rainCardTitle {
+  font-weight: 800 !important;
+  font-size: 1rem !important;
+  color: #e65100 !important;
+  line-height: 1.3 !important;
+}
+
+.rainCardDesc {
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 1.7;
+  font-size: 0.93rem;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────── */
+@media (min-width: 600px) {
+  .stageCard {
+    grid-column: span 6;
+  }
+
+  .specialCard {
+    grid-column: span 6;
+  }
+
+  .bonusGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 960px) {
+  .stageCard {
+    grid-column: span 4;
+  }
+
+  .specialCard {
+    grid-column: span 4;
+  }
+}
+

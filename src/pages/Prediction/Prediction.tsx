@@ -199,6 +199,34 @@ const Prediction = () => {
   const [correctAnswer, setCorrectAnswer] = useState<CorrectAnswer | null>(null);
   const [notAccessible, setNotAccessible] = useState(false); // match too far in future
 
+  // ── Countdown timer ────────────────────────────────────────────────────────
+  const [countdown, setCountdown] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!match) return;
+    const matchDateTime = new Date(`${match.match_date}T${match.match_time}`);
+
+    const tick = () => {
+      const diff = matchDateTime.getTime() - Date.now();
+      if (diff <= 0) {
+        setCountdown(null); // match started
+        return;
+      }
+      const h = Math.floor(diff / 3_600_000);
+      const m = Math.floor((diff % 3_600_000) / 60_000);
+      const s = Math.floor((diff % 60_000) / 1_000);
+      const parts: string[] = [];
+      if (h > 0) parts.push(`${h}h`);
+      if (h > 0 || m > 0) parts.push(`${m}m`);
+      parts.push(`${s}s`);
+      setCountdown(parts.join(' ') + ' remaining');
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [match]);
+
   // ── Double Trouble ─────────────────────────────────────────────────────────
   const [useDoubleTrouble, setUseDoubleTrouble] = useState(false);
   const [dtUsedInStage, setDtUsedInStage] = useState(0);        // how many DT already used in this stage (other matches)
@@ -652,11 +680,59 @@ const Prediction = () => {
               </Typography>
             </Box>
           </Box>
+
+          {/* Countdown timer — centred below team names */}
+          {countdown && !matchLocked && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+              <Box
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 0.75,
+                  px: 1.6,
+                  py: 0.65,
+                  borderRadius: '24px',
+                  background: 'linear-gradient(135deg, rgba(251,146,60,0.22), rgba(234,179,8,0.18))',
+                  border: '1px solid rgba(251,146,60,0.45)',
+                  boxShadow: '0 2px 14px rgba(251,146,60,0.2)',
+                }}
+              >
+                {/* Pulsing dot */}
+                <Box
+                  sx={{
+                    width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                    background: '#fb923c',
+                    boxShadow: '0 0 7px #fb923c',
+                    animation: 'cdPulse 1.2s ease-in-out infinite',
+                    '@keyframes cdPulse': {
+                      '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+                      '50%': { opacity: 0.35, transform: 'scale(0.75)' },
+                    },
+                  }}
+                />
+                <Typography
+                  sx={{
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    background: 'linear-gradient(90deg, #fb923c, #facc15)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                    fontVariantNumeric: 'tabular-nums',
+                    whiteSpace: 'nowrap',
+                    letterSpacing: '0.02em',
+                  }}
+                >
+                  ⏱ {countdown}
+                </Typography>
+              </Box>
+            </Box>
+          )}
         </Container>
       </Box>
 
       {/* ── Tab bar ───────────────────────────────────────── */}
-      <Box sx={{ background: '#fff', borderBottom: '1px solid rgba(0,0,0,0.07)', position: 'sticky', top: 64, zIndex: 10 }}>
+      <Box sx={{ background: '#fff', borderBottom: '1px solid rgba(0,0,0,0.07)', position: 'sticky', top: 58, zIndex: 10 }}>
         <Container maxWidth="md" disableGutters>
           <Tabs
             value={activeTab}
@@ -664,9 +740,9 @@ const Prediction = () => {
             variant="fullWidth"
             TabIndicatorProps={{ style: { display: 'none' } }}
             sx={{
-              minHeight: 52,
+              minHeight: 44,
               '& .MuiTab-root': {
-                minHeight: 52,
+                minHeight: 44,
                 fontWeight: 700,
                 fontSize: '0.72rem',
                 letterSpacing: '0.04em',
@@ -676,8 +752,8 @@ const Prediction = () => {
                 px: 1,
                 transition: 'color 0.18s ease',
                 '&.Mui-selected': { color: '#000' },
-                '&:focus': { outline: 'none' }, // Remove focus outline
-                '&:focus-visible': { outline: 'none' }, // Remove focus-visible outline
+                '&:focus': { outline: 'none' },
+                '&:focus-visible': { outline: 'none' },
               },
             }}
           >
@@ -726,7 +802,7 @@ const Prediction = () => {
       {/* ── Tab content ───────────────────────────────────── */}
       <Container
         maxWidth="md"
-        sx={{ py: 3, px: { xs: 2, sm: 3 } }}
+        sx={{ py: 3, px: { xs: 2, sm: 3 }, pb: 10 }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
@@ -750,11 +826,11 @@ const Prediction = () => {
                       borderRadius: '20px',
                       border: (hasResults && correctWinner === team) ? '2.5px solid #16a34a' : selected ? `2.5px solid ${color}` : '2px solid rgba(0,0,0,0.08)',
                       background: (hasResults && correctWinner === team) ? '#f0fdf4' : selected ? `${color}10` : '#fff',
-                      p: { xs: 2.5, sm: 3 },
+                      p: { xs: 1.75, sm: 2.25 },
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 1.25,
+                      gap: 1,
                       cursor: matchLocked ? 'default' : 'pointer',
                       transition: 'all 0.2s ease',
                       opacity: matchLocked && !selected ? 0.5 : 1,
@@ -768,16 +844,16 @@ const Prediction = () => {
                     {(() => { const m = getTeamMeta(team); return (
                     <Box
                       sx={{
-                        width: { xs: 64, sm: 72 },
-                        height: { xs: 64, sm: 72 },
-                        borderRadius: '20px',
+                        width: { xs: 52, sm: 60 },
+                        height: { xs: 52, sm: 60 },
+                        borderRadius: '16px',
                         background: selected || (hasResults && correctWinner === team) ? m.color : 'rgba(0,0,0,0.07)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         boxShadow: selected ? `0 6px 20px ${m.color}55` : 'none',
                         transition: 'all 0.2s ease',
-                        p: '8px',
+                        p: '6px',
                       }}
                     >
                       {m.logo ? (

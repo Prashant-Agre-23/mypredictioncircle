@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -197,6 +197,7 @@ const Prediction = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [toast, setToast] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
   const [correctAnswer, setCorrectAnswer] = useState<CorrectAnswer | null>(null);
+  const [notAccessible, setNotAccessible] = useState(false); // match too far in future
 
   // ── Double Trouble ─────────────────────────────────────────────────────────
   const [useDoubleTrouble, setUseDoubleTrouble] = useState(false);
@@ -283,7 +284,18 @@ const Prediction = () => {
 
       if (matchData) setMatch(matchData as MatchDetail);
 
-      // Fetch players for both teams
+      // ── Access gate: only allow if match starts within next 24h or has already started ──
+      if (matchData) {
+        const matchDateTime = new Date(`${matchData.match_date}T${matchData.match_time}`);
+        const now = new Date();
+        const diffHours = (matchDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+        // diffHours < 0 → already started; 0–24 → prediction window open; > 24 → too early
+        if (diffHours > 24) {
+          setNotAccessible(true);
+          setLoading(false);
+          return;
+        }
+      }
       if (matchData?.team_a && matchData?.team_b) {
         const { data: playersData } = await supabase
           .from('players')
@@ -399,7 +411,27 @@ const Prediction = () => {
 
   const tabDone = (key: TabKey) => selections[key] !== null;
 
-  // ── Loading ────────────────────────────────────────────────────────────────
+  // ── Swipe gesture for tab navigation ──────────────────────────────────────
+  const TAB_KEYS: TabKey[] = ['winner', 'batter', 'bowler', 'mom'];
+  const swipeTouchStart = useRef<{ x: number; y: number } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    swipeTouchStart.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!swipeTouchStart.current) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - swipeTouchStart.current.x;
+    const dy = t.clientY - swipeTouchStart.current.y;
+    swipeTouchStart.current = null;
+    // Only trigger if horizontal swipe dominates and is >= 50px
+    if (Math.abs(dx) < 50 || Math.abs(dy) > Math.abs(dx)) return;
+    const idx = TAB_KEYS.indexOf(activeTab);
+    if (dx < 0 && idx < TAB_KEYS.length - 1) setActiveTab(TAB_KEYS[idx + 1]); // swipe left → next
+    if (dx > 0 && idx > 0) setActiveTab(TAB_KEYS[idx - 1]);                    // swipe right → prev
+  };
 
   if (loading) {
     return (
@@ -412,7 +444,88 @@ const Prediction = () => {
     );
   }
 
-  // ── UI ─────────────────────────────────────────────────────────────────────
+  // Match is not yet in the prediction window
+  if (notAccessible) {
+    return (
+      <Box sx={{ minHeight: '100vh', background: '#f5f5f7' }}>
+        <Navbar />
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 'calc(100vh - 64px)',
+            px: 3,
+            textAlign: 'center',
+          }}
+        >
+          <Box
+            sx={{
+              width: 72,
+              height: 72,
+              borderRadius: '22px',
+              background: '#000',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              mb: 2.5,
+              boxShadow: '0 8px 28px rgba(0,0,0,0.15)',
+            }}
+          >
+            <Typography sx={{ fontSize: '2rem', lineHeight: 1 }}>🔒</Typography>
+          </Box>
+          <Typography sx={{ fontWeight: 900, fontSize: '1.25rem', color: '#000', mb: 0.75, letterSpacing: '-0.02em' }}>
+            Predictions Not Open Yet
+          </Typography>
+          <Typography sx={{ fontSize: '0.88rem', color: 'rgba(0,0,0,0.45)', maxWidth: 300, lineHeight: 1.65, mb: 3 }}>
+            Predictions for this match open 24 hours before it starts. Check back closer to match day.
+          </Typography>
+          {match && (
+            <Box
+              sx={{
+                px: 2,
+                py: 1.25,
+                borderRadius: '14px',
+                background: '#fff',
+                border: '1px solid rgba(0,0,0,0.08)',
+                mb: 3,
+                boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+              }}
+            >
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'rgba(0,0,0,0.4)', letterSpacing: '0.06em', textTransform: 'uppercase', mb: 0.4 }}>
+                Match {match.match_number}
+              </Typography>
+              <Typography sx={{ fontSize: '0.88rem', fontWeight: 800, color: '#000' }}>
+                {match.team_a} vs {match.team_b}
+              </Typography>
+              <Typography sx={{ fontSize: '0.75rem', color: 'rgba(0,0,0,0.45)', mt: 0.3 }}>
+                {match.match_date} · {match.match_time}
+              </Typography>
+            </Box>
+          )}
+          <Box
+            onClick={() => navigate('/dashboard')}
+            sx={{
+              px: 3,
+              py: 1.25,
+              borderRadius: '14px',
+              background: '#000',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 0.75,
+              '&:hover': { background: '#222' },
+              transition: 'background 0.15s ease',
+            }}
+          >
+            <ArrowBackIcon sx={{ fontSize: '0.9rem', color: '#fff' }} />
+            <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#fff' }}>Back to Dashboard</Typography>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', background: '#f5f5f7', pb: '88px' }}>
@@ -576,22 +689,27 @@ const Prediction = () => {
                   key={key}
                   value={key}
                   label={
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
-                      {/* Selection status pill */}
-                      <Box
-                        sx={{
-                          height: 4,
-                          width: done ? 24 : 16,
-                          borderRadius: '4px',
-                          background: done
-                            ? '#000'
-                            : isActive
-                            ? 'rgba(0,0,0,0.25)'
-                            : 'rgba(0,0,0,0.1)',
-                          transition: 'all 0.25s ease',
-                        }}
-                      />
-                      <span style={{ fontSize: '0.72rem', letterSpacing: '0.04em' }}>{label}</span>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.4 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35 }}>
+                        <span style={{ fontSize: '0.72rem', letterSpacing: '0.04em' }}>{label}</span>
+                        {done && (
+                          <Box sx={{
+                            width: 14, height: 14, borderRadius: '50%',
+                            background: isActive ? '#000' : 'rgba(0,0,0,0.15)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            transition: 'background 0.2s ease',
+                          }}>
+                            <Typography sx={{ fontSize: '0.52rem', color: '#fff', fontWeight: 900, lineHeight: 1 }}>✓</Typography>
+                          </Box>
+                        )}
+                      </Box>
+                      {/* active underline bar */}
+                      <Box sx={{
+                        height: 3, width: isActive ? 20 : done ? 12 : 8,
+                        borderRadius: '3px',
+                        background: isActive ? '#000' : done ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.1)',
+                        transition: 'all 0.25s ease',
+                      }} />
                     </Box>
                   }
                   sx={{
@@ -606,8 +724,12 @@ const Prediction = () => {
       </Box>
 
       {/* ── Tab content ───────────────────────────────────── */}
-      <Container maxWidth="md" sx={{ py: 3, px: { xs: 2, sm: 3 } }}>
-
+      <Container
+        maxWidth="md"
+        sx={{ py: 3, px: { xs: 2, sm: 3 } }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         {/* ────── WINNER ────── */}
         {activeTab === 'winner' && (
           <Box>
@@ -848,37 +970,52 @@ const Prediction = () => {
         }}
       >
         <Container maxWidth="md" disableGutters>
-          {/* Progress dots */}
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, mb: 1.25 }}>
+          {/* ── Mini selection summary ── */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.75, mb: 1.25 }}>
             {TABS.map(({ key, label }) => {
-              const done = selections[key] !== null;
+              const val = selections[key];
+              const done = val !== null;
+              const isActive = activeTab === key;
+              const displayVal = done
+                ? (key === 'winner' ? String(val) : playerName(val))
+                : null;
+              const color = done
+                ? (key === 'winner'
+                  ? (val === teamA ? colorA : colorB)
+                  : (players.find((p) => Number(p.id) === Number(val))?.team === teamA ? colorA : colorB))
+                : null;
               return (
                 <Box
                   key={key}
                   onClick={() => setActiveTab(key)}
                   sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
+                    borderRadius: '10px',
+                    px: 0.75,
+                    py: 0.6,
+                    background: isActive ? '#000' : done ? `${color}12` : 'rgba(0,0,0,0.04)',
+                    border: isActive ? '1.5px solid #000' : done ? `1.5px solid ${color}40` : '1.5px solid transparent',
                     cursor: 'pointer',
-                    opacity: done ? 1 : 0.35,
-                    transition: 'opacity 0.2s ease',
+                    transition: 'all 0.18s ease',
+                    minWidth: 0,
+                    overflow: 'hidden',
                   }}
                 >
-                  <Box
-                    sx={{
-                      width: done ? 18 : 6,
-                      height: 6,
-                      borderRadius: '3px',
-                      background: '#000',
-                      transition: 'width 0.3s ease',
-                    }}
-                  />
-                  {done && (
-                    <Typography sx={{ fontSize: '0.6rem', fontWeight: 800, color: '#000', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                      {label}
-                    </Typography>
-                  )}
+                  <Typography sx={{
+                    fontSize: '0.55rem', fontWeight: 800, letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    color: isActive ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)',
+                    lineHeight: 1.2, mb: 0.2,
+                  }}>
+                    {label}
+                  </Typography>
+                  <Typography sx={{
+                    fontSize: '0.65rem', fontWeight: 800,
+                    color: isActive ? '#fff' : done ? '#000' : 'rgba(0,0,0,0.2)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    lineHeight: 1.2,
+                  }}>
+                    {done ? (displayVal ?? '') : '—'}
+                  </Typography>
                 </Box>
               );
             })}

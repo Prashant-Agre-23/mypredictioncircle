@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../config/supabaseClient';
 
-const ADMIN_EMAIL = 'prashant.agre@gmail.com';
+const ADMIN_EMAILS = ['prashant.agre@gmail.com', 'deepak.panwar@gmail.com'];
 
 interface AuthContextType {
   session: Session | null;
@@ -51,7 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await supabase.auth.signOut();
   };
 
-  const isAdmin = session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const isAdmin = ADMIN_EMAILS.some(e => e.toLowerCase() === session?.user?.email?.toLowerCase());
 
   return (
     <AuthContext.Provider value={{ session, loading, isAdmin, signIn, signOut }}>

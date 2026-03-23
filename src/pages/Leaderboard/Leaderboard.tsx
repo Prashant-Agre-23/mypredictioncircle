@@ -208,13 +208,13 @@ const Leaderboard = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', background: '#0a0a0f', pb: 8 }}>
+    <Box sx={{ minHeight: '100vh', background: '#f5f5f7', pb: 8 }}>
       <Navbar />
 
       {/* ── Header ────────────────────────────────────────── */}
       <Box
         sx={{
-          background: '#0a0a0f',
+          background: '#000',
           pt: 3.5,
           pb: 4,
           px: 2,
@@ -240,7 +240,7 @@ const Leaderboard = () => {
             <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#fff', letterSpacing: '-0.02em' }}>
               Leaderboard
             </Typography>
-            <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.38)', fontWeight: 600 }}>
+            <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>
               Season rankings · All matches
             </Typography>
           </Box>
@@ -250,12 +250,12 @@ const Leaderboard = () => {
       {/* ── Loading / Error ───────────────────────────────── */}
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress sx={{ color: 'rgba(255,255,255,0.5)' }} />
+          <CircularProgress sx={{ color: 'rgba(0,0,0,0.3)' }} />
         </Box>
       )}
       {error && (
         <Box sx={{ textAlign: 'center', py: 6 }}>
-          <Typography sx={{ color: '#f87171', fontSize: '0.9rem' }}>{error}</Typography>
+          <Typography sx={{ color: '#dc2626', fontSize: '0.9rem' }}>{error}</Typography>
         </Box>
       )}
 
@@ -268,8 +268,9 @@ const Leaderboard = () => {
               px: 2,
               py: 1.25,
               borderRadius: '16px',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.12)',
+              background: '#111',
+              border: '1px solid rgba(255,255,255,0.08)',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.25)',
               display: 'flex',
               alignItems: 'center',
               gap: 1.25,
@@ -278,8 +279,8 @@ const Leaderboard = () => {
             <Box
               sx={{
                 width: 36, height: 36, borderRadius: '10px',
-                background: 'rgba(255,255,255,0.1)',
-                border: '1px solid rgba(255,255,255,0.18)',
+                background: 'rgba(255,255,255,0.12)',
+                border: '1px solid rgba(255,255,255,0.15)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontWeight: 900, fontSize: '0.78rem', color: '#fff', flexShrink: 0,
               }}
@@ -290,7 +291,7 @@ const Leaderboard = () => {
               <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#fff', lineHeight: 1.2 }}>
                 {myRow.display_name}
               </Typography>
-              <Typography sx={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.38)', fontWeight: 600 }}>
+              <Typography sx={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>
                 {myRow.graded_predictions} graded predictions
               </Typography>
             </Box>
@@ -298,7 +299,7 @@ const Leaderboard = () => {
               <Typography sx={{ fontWeight: 900, fontSize: '1.1rem', color: '#fff', lineHeight: 1 }}>
                 #{myRow.rank}
               </Typography>
-              <Typography sx={{ fontWeight: 700, fontSize: '0.65rem', color: 'rgba(255,255,255,0.38)' }}>
+              <Typography sx={{ fontWeight: 700, fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)' }}>
                 {myRow.total_points} pts
               </Typography>
             </Box>
@@ -317,7 +318,7 @@ const Leaderboard = () => {
               overflow: 'hidden',
               border: '1px solid rgba(255,255,255,0.08)',
               background: '#111',
-              boxShadow: '0 4px 32px rgba(0,0,0,0.5)',
+              boxShadow: '0 4px 32px rgba(0,0,0,0.4)',
             }}
           >
             {/* Column headers */}
@@ -329,7 +330,7 @@ const Leaderboard = () => {
                 px: 2,
                 py: 1.1,
                 background: '#000',
-                borderBottom: '1px solid rgba(255,255,255,0.07)',
+                borderBottom: '1px solid rgba(0,0,0,0.07)',
               }}
             >
               {[
@@ -345,7 +346,7 @@ const Leaderboard = () => {
                   sx={{
                     fontWeight: 800,
                     fontSize: '0.58rem',
-                    color: 'rgba(255,255,255,0.5)',
+                    color: 'rgba(255,255,255,0.6)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.1em',
                     textAlign: align as 'center' | 'left' | 'right',
@@ -377,15 +378,11 @@ const Leaderboard = () => {
                       px: 2,
                       py: 1.4,
                       borderBottom: isExpanded ? 'none' : isLast ? 'none' : '1px solid rgba(255,255,255,0.06)',
-                      background: isExpanded
-                        ? 'rgba(255,255,255,0.05)'
-                        : '#111',
+                      background: isExpanded ? 'rgba(255,255,255,0.05)' : '#111',
                       cursor: 'pointer',
                       position: 'relative',
                       transition: 'background 0.15s',
-                      '&:hover': {
-                        background: 'rgba(255,255,255,0.05)',
-                      },
+                      '&:hover': { background: 'rgba(255,255,255,0.05)' },
                       ...(isMe && {
                         '&::before': {
                           content: '""',
@@ -448,8 +445,8 @@ const Leaderboard = () => {
                       return (
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {dt > 0 ? (
-                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, px: 0.7, py: 0.25, borderRadius: '6px', background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)' }}>
-                              <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#fbbf24' }}>⚡{dt}</Typography>
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, px: 0.7, py: 0.25, borderRadius: '6px', background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.4)' }}>
+                              <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#d97706' }}>⚡{dt}</Typography>
                             </Box>
                           ) : (
                             <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', fontWeight: 600 }}>—</Typography>
@@ -471,31 +468,27 @@ const Leaderboard = () => {
 
                     {/* Points chip */}
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <Box
-                        sx={{
-                          px: 1.1, py: 0.35, borderRadius: '9px',
-                          background: medal ? medal.glow : 'rgba(255,255,255,0.1)',
-                          border: medal ? `1px solid ${medal.color}50` : '1px solid rgba(255,255,255,0.15)',
-                        }}
-                      >
-                        <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: medal ? medal.color : '#fff', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
-                          {row.total_points}
-                        </Typography>
-                      </Box>
+                        <Box
+                          sx={{
+                            px: 1.1, py: 0.35, borderRadius: '9px',
+                            background: medal ? medal.glow : 'rgba(255,255,255,0.1)',
+                            border: medal ? `1px solid ${medal.color}60` : '1px solid rgba(255,255,255,0.15)',
+                          }}
+                        >
+                          <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: medal ? medal.color : '#fff', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
+                            {row.total_points}
+                          </Typography>
+                        </Box>
                     </Box>
 
                     {/* Chevron */}
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Box
                         sx={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: '6px',
+                          width: 20, height: 20, borderRadius: '6px',
                           background: isExpanded ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
                           border: '1px solid rgba(255,255,255,0.15)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'background 0.15s',
                         }}
                       >
@@ -656,17 +649,18 @@ const Leaderboard = () => {
                 sx={{
                   display: 'inline-flex', alignItems: 'center', gap: 0.75,
                   px: 2.5, py: 1.1, borderRadius: '14px',
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: '#fff',
+                  border: '1px solid rgba(0,0,0,0.1)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                   cursor: 'pointer', userSelect: 'none',
                   transition: 'background 0.15s, border-color 0.15s',
-                  '&:hover': { background: 'rgba(255,255,255,0.09)', borderColor: 'rgba(255,255,255,0.18)' },
+                  '&:hover': { background: '#f0f0f0', borderColor: 'rgba(0,0,0,0.18)' },
                 }}
               >
-                <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)' }}>
+                <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: 'rgba(0,0,0,0.6)' }}>
                   {showAll ? 'Show less' : `Show all ${sorted.length} players`}
                 </Typography>
-                <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)' }}>
+                <Typography sx={{ fontSize: '0.72rem', color: 'rgba(0,0,0,0.3)' }}>
                   {showAll ? '↑' : '↓'}
                 </Typography>
               </Box>
@@ -678,7 +672,7 @@ const Leaderboard = () => {
       {/* Empty state */}
       {!loading && !error && sorted.length === 0 && (
         <Container maxWidth="md" sx={{ px: 2, mt: 6, textAlign: 'center' }}>
-          <Typography sx={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.9rem', fontWeight: 600 }}>
+          <Typography sx={{ color: 'rgba(0,0,0,0.3)', fontSize: '0.9rem', fontWeight: 600 }}>
             No data yet. Make some predictions!
           </Typography>
         </Container>

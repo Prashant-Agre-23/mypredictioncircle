@@ -19,14 +19,12 @@ import {
   Divider,
   useMediaQuery,
   useTheme,
-  Badge,
   Tooltip,
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import HomeIcon from '@mui/icons-material/Home';
 import MenuIcon from '@mui/icons-material/Menu';
 import CloseIcon from '@mui/icons-material/Close';
-import NotificationsIcon from '@mui/icons-material/Notifications';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import SportsCricketIcon from '@mui/icons-material/SportsCricket';
@@ -119,17 +117,7 @@ const Navbar = () => {
 
           {/* ── Right Section ── */}
           <Box className={styles.rightSection}>
-            {!isMobile && (
-              <Tooltip title="Notifications">
-                <IconButton className={styles.iconButton}>
-                  <Badge badgeContent={3} color="error">
-                    <NotificationsIcon sx={{ fontSize: '1.2rem' }} />
-                  </Badge>
-                </IconButton>
-              </Tooltip>
-            )}
-
-            {/* Desktop avatar → dropdown */}
+          {/* Desktop avatar → dropdown */}
             {!isMobile && (
               <Tooltip title={session?.user?.email || 'Account'}>
                 <IconButton onClick={handleMenuOpen} className={styles.userButtonIcon} sx={{ ml: 0.25 }}>

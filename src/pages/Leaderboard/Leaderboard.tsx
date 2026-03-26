@@ -43,9 +43,21 @@ interface CaRow {
   is_washout: boolean | null;
 }
 
+interface MatchStreakInfo {
+  streakAtMatch: number;   // running streak AFTER this match (0 if reset/fifer just awarded)
+  fiferJustEarned: boolean; // did this match complete a fifer?
+  winnerCorrect: boolean | null; // null = washout/no prediction
+}
+
 interface ComputedStats {
   dtCount: number;
-  streak: number; // current active streak (resets after 5 or on loss)
+  streak: number;     // current active streak (resets after 5 or on loss)
+  fiferCount: number; // how many times the user has hit 5 consecutive wins
+  matchStreaks: Record<number, MatchStreakInfo>; // keyed by match_id
+  perfectMatchIds: Set<number>; // match_ids where user got all 4 correct
+  missedMatchIds: Set<number>;  // match_ids where no prediction was submitted
+  washoutMatchIds: Set<number>; // match_ids that were washouts
+  missedPenalty: number;        // total penalty points for missed predictions
 }
 
 const getInitials = (name: string) =>
@@ -98,6 +110,13 @@ const Leaderboard = () => {
       // Sort correct_answers by match_number so we iterate in match order
       const sortedCas = [...cas].sort((a, b) => (a.match_number ?? 0) - (b.match_number ?? 0));
 
+      // Stage-based penalty for missed predictions
+      const stagePoints = (matchNumber: number) => {
+        if (matchNumber <= 35) return 50;
+        if (matchNumber <= 70) return 70;
+        return 90;
+      };
+
       const map: Record<string, ComputedStats> = {};
       for (const row of lbRows) {
         // Index this user's predictions by match_id for O(1) lookup
@@ -109,19 +128,38 @@ const Leaderboard = () => {
 
         let dtCount = 0;
         let streak = 0;
+        let fiferCount = 0;
+        let missedPenalty = 0;
+        const matchStreaks: Record<number, MatchStreakInfo> = {};
+        const perfectMatchIds = new Set<number>();
+        const missedMatchIds = new Set<number>();
+        const washoutMatchIds = new Set<number>();
 
         // Walk every graded match in order
         for (const ca of sortedCas) {
           const isWashout = ca.is_washout === true;
 
           // If washout: streak is unaffected (neither increment nor reset)
-          if (isWashout) continue;
+          if (isWashout) {
+            washoutMatchIds.add(ca.match_id);
+            // If user also missed this washout match → still gets penalty
+            const p = userPredMap.get(ca.match_id);
+            if (!p) {
+              missedMatchIds.add(ca.match_id);
+              missedPenalty += stagePoints(ca.match_number ?? 0);
+            }
+            matchStreaks[ca.match_id] = { streakAtMatch: streak, fiferJustEarned: false, winnerCorrect: null };
+            continue;
+          }
 
           const p = userPredMap.get(ca.match_id);
 
-          // Missed match (no prediction submitted) → streak resets
+          // Missed match (no prediction submitted) → streak resets + penalty
           if (!p) {
             streak = 0;
+            missedMatchIds.add(ca.match_id);
+            missedPenalty += stagePoints(ca.match_number ?? 0);
+            matchStreaks[ca.match_id] = { streakAtMatch: 0, fiferJustEarned: false, winnerCorrect: null };
             continue;
           }
 
@@ -129,20 +167,31 @@ const Leaderboard = () => {
 
           // Streak is based on correctly predicting the winner only
           const winnerCorrect = !!ca.winner && p.predicted_winner === ca.winner;
+          const batterCorrect = !!ca.batter_id && p.predicted_batter_id !== null && Number(p.predicted_batter_id) === ca.batter_id;
+          const bowlerCorrect = !!ca.bowler_id && p.predicted_bowler_id !== null && Number(p.predicted_bowler_id) === ca.bowler_id;
+          const momCorrect = !!ca.mom_id && p.predicted_mom_id !== null && Number(p.predicted_mom_id) === ca.mom_id;
+          const isPerfect = winnerCorrect && batterCorrect && bowlerCorrect && momCorrect;
+
+          if (isPerfect) perfectMatchIds.add(ca.match_id);
 
           if (winnerCorrect) {
             streak += 1;
             if (streak === 5) {
-              // Fifer bonus awarded — reset streak to 0
+              // Fifer bonus awarded — +100 pts, reset streak to 0
+              fiferCount += 1;
+              matchStreaks[ca.match_id] = { streakAtMatch: 5, fiferJustEarned: true, winnerCorrect: true };
               streak = 0;
+            } else {
+              matchStreaks[ca.match_id] = { streakAtMatch: streak, fiferJustEarned: false, winnerCorrect: true };
             }
           } else {
             // Wrong winner or ungraded → streak resets
             streak = 0;
+            matchStreaks[ca.match_id] = { streakAtMatch: 0, fiferJustEarned: false, winnerCorrect: false };
           }
         }
 
-        map[row.user_id] = { dtCount, streak };
+        map[row.user_id] = { dtCount, streak, fiferCount, matchStreaks, perfectMatchIds, missedMatchIds, washoutMatchIds, missedPenalty };
       }
       setStatsMap(map);
       setLoading(false);
@@ -150,10 +199,13 @@ const Leaderboard = () => {
     fetchLeaderboard();
   }, []);
 
-  const sorted = useMemo(
-    () => [...rows].sort((a, b) => b.total_points - a.total_points),
-    [rows]
-  );
+  const sorted = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const aDisplay = a.total_points + (statsMap[a.user_id]?.fiferCount ?? 0) * 100 - (statsMap[a.user_id]?.missedPenalty ?? 0);
+      const bDisplay = b.total_points + (statsMap[b.user_id]?.fiferCount ?? 0) * 100 - (statsMap[b.user_id]?.missedPenalty ?? 0);
+      return bDisplay - aDisplay;
+    });
+  }, [rows, statsMap]);
 
   // Fetch per-match breakdown lazily when accordion opens
   const handleToggleRow = async (userId: string) => {
@@ -164,47 +216,69 @@ const Leaderboard = () => {
     setExpandedUserId(userId);
     if (matchBreakdown[userId]) return; // already fetched
 
-    // Fetch points data
+    // Fetch all graded matches (correct_answers) — so missed + washout show too
+    const { data: caData } = await supabase
+      .from('correct_answers')
+      .select('match_id, match_number, is_washout')
+      .order('match_number', { ascending: true });
+
+    const allCaRows = (caData ?? []) as { match_id: number; match_number: number; is_washout: boolean | null }[];
+    const allMatchIds = allCaRows.map((r) => r.match_id);
+
+    // Fetch points for matches the user DID predict
     const { data: pwpData } = await supabase
       .from('predictions_with_points')
       .select('match_id, match_number, points')
       .eq('user_id', userId)
-      .not('points', 'is', null)
       .order('match_number', { ascending: true });
 
     const pwpRows = (pwpData ?? []) as { match_id: number; match_number: number; points: number | null }[];
+    const pwpByMatchId = new Map(pwpRows.map((r) => [r.match_id, r]));
 
-    // Fetch team names for those match IDs
-    const matchIds = pwpRows.map((r) => r.match_id);
+    // Fetch team names for all graded match IDs
     const teamMap: Record<number, { team_a: string | null; team_b: string | null }> = {};
-    if (matchIds.length > 0) {
+    if (allMatchIds.length > 0) {
       const { data: matchData } = await supabase
         .from('matches')
         .select('id, team_a, team_b')
-        .in('id', matchIds);
+        .in('id', allMatchIds);
       for (const m of matchData ?? []) {
         teamMap[m.id] = { team_a: m.team_a ?? null, team_b: m.team_b ?? null };
       }
     }
 
-    const merged: MatchPoints[] = pwpRows.map((r) => ({
-      ...r,
-      team_a: teamMap[r.match_id]?.team_a ?? null,
-      team_b: teamMap[r.match_id]?.team_b ?? null,
-    }));
+    // Build merged list: predicted rows use real pts; missed rows use null pts; washouts use 0
+    const merged: MatchPoints[] = allCaRows.map((ca) => {
+      const pwp = pwpByMatchId.get(ca.match_id);
+      return {
+        match_id: ca.match_id,
+        match_number: ca.match_number,
+        points: ca.is_washout ? 0 : (pwp?.points ?? null), // null = missed
+        team_a: teamMap[ca.match_id]?.team_a ?? null,
+        team_b: teamMap[ca.match_id]?.team_b ?? null,
+      };
+    });
 
     setMatchBreakdown((prev) => ({ ...prev, [userId]: merged }));
   };
 
   const myRow = sorted.find((r) => r.user_id === session?.user?.id);
   const visible = showAll ? sorted : sorted.slice(0, PAGE_SIZE);
-  const maxPts = sorted[0]?.total_points ?? 1;
 
-  const streakLabel = (n: number) => {
-    if (n === 0) return { text: '—', color: 'rgba(255,255,255,0.2)' };
-    if (n >= 5) return { text: `🔥${n}`, color: '#fb923c' };
-    if (n >= 3) return { text: `⚡${n}`, color: '#fbbf24' };
-    return { text: `${n}`, color: 'rgba(255,255,255,0.65)' };
+  const streakLabel = (streak: number, fiferCount: number) => {
+    // Fifer earned + still has active streak
+    if (fiferCount > 0 && streak > 0)
+      return { text: `🔥×${fiferCount}  ⚡${streak}`, color: '#fb923c', title: `${fiferCount} Fifer${fiferCount > 1 ? 's' : ''} earned (+${fiferCount * 100} pts). Current streak: ${streak}` };
+    if (fiferCount > 0 && streak === 0)
+      return { text: `🔥×${fiferCount}`, color: '#fb923c', title: `${fiferCount} Fifer bonus${fiferCount > 1 ? 'es' : ''} earned (+${fiferCount * 100} pts).` };
+    // No fifer yet
+    if (streak >= 4)
+      return { text: `⚡${streak}`, color: '#fbbf24', title: `${streak} win streak — ${5 - streak > 0 ? `${5 - streak} more for Fifer!` : 'Fifer bonus earned!'}` };
+    if (streak >= 2)
+      return { text: `⚡${streak}`, color: '#60a5fa', title: `${streak} win streak` };
+    if (streak === 1)
+      return { text: `⚡1`, color: 'rgba(255,255,255,0.55)', title: '1 win streak' };
+    return { text: '—', color: 'rgba(255,255,255,0.2)', title: 'No active streak' };
   };
 
   return (
@@ -361,7 +435,12 @@ const Leaderboard = () => {
             {visible.map((row, idx) => {
               const isMe = row.user_id === session?.user?.id;
               const medal = MEDAL[row.rank];
-              const barPct = Math.max(4, Math.round((row.total_points / maxPts) * 100));
+              const stats = statsMap[row.user_id];
+              const fiferBonus = (stats?.fiferCount ?? 0) * 100;
+              const missedPenalty = stats?.missedPenalty ?? 0;
+              const displayPts = row.total_points + fiferBonus - missedPenalty;
+              const maxDisplayPts = (sorted[0]?.total_points ?? 1) + ((statsMap[sorted[0]?.user_id]?.fiferCount ?? 0) * 100) - (statsMap[sorted[0]?.user_id]?.missedPenalty ?? 0);
+              const barPct = Math.max(4, Math.round((displayPts / Math.max(maxDisplayPts, 1)) * 100));
               const isLast = idx === visible.length - 1;
               const isExpanded = expandedUserId === row.user_id;
               const breakdown = matchBreakdown[row.user_id] ?? [];
@@ -455,19 +534,22 @@ const Leaderboard = () => {
                       );
                     })()}
 
-                    {/* Streak */}
+                    {/* Streak + fifer */}
                     {(() => {
-                      const s = statsMap[row.user_id]?.streak ?? 0;
-                      const sl = streakLabel(s);
+                      const s = stats?.streak ?? 0;
+                      const f = stats?.fiferCount ?? 0;
+                      const sl = streakLabel(s, f);
                       return (
-                        <Typography sx={{ fontWeight: 800, fontSize: '0.8rem', color: sl.color, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
-                          {sl.text}
-                        </Typography>
+                        <Box sx={{ textAlign: 'center' }} title={sl.title}>
+                          <Typography sx={{ fontWeight: 800, fontSize: '0.72rem', color: sl.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1.2 }}>
+                            {sl.text}
+                          </Typography>
+                        </Box>
                       );
                     })()}
 
                     {/* Points chip */}
-                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.3 }}>
                         <Box
                           sx={{
                             px: 1.1, py: 0.35, borderRadius: '9px',
@@ -476,9 +558,10 @@ const Leaderboard = () => {
                           }}
                         >
                           <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: medal ? medal.color : '#fff', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
-                            {row.total_points}
+                            {displayPts}
                           </Typography>
                         </Box>
+
                     </Box>
 
                     {/* Chevron */}
@@ -528,15 +611,15 @@ const Leaderboard = () => {
                           <Box
                             sx={{
                               display: 'grid',
-                              gridTemplateColumns: '52px 1fr 64px',
+                              gridTemplateColumns: '52px 1fr 48px 64px',
                               px: 2,
                               pt: 1,
                               pb: 0.4,
                               borderBottom: '1px solid rgba(0,0,0,0.06)',
                             }}
                           >
-                            {['Match', 'Teams', 'Pts'].map((h, i) => (
-                              <Typography key={h} sx={{ fontSize: '0.52rem', fontWeight: 800, color: 'rgba(0,0,0,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: i === 2 ? 'right' : 'left' }}>
+                            {['Match', 'Teams', 'Streak', 'Pts'].map((h, i) => (
+                              <Typography key={h} sx={{ fontSize: '0.52rem', fontWeight: 800, color: 'rgba(0,0,0,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: i >= 2 ? 'center' : 'left', ...(i === 3 && { textAlign: 'right' }) }}>
                                 {h}
                               </Typography>
                             ))}
@@ -544,10 +627,22 @@ const Leaderboard = () => {
 
                           {/* Match rows */}
                           {breakdown.map((m, mIdx) => {
-                            const pts = m.points ?? 0;
+                            const stats = statsMap[row.user_id];
+                            const isWashoutMatch = stats?.washoutMatchIds?.has(m.match_id) ?? false;
+                            const isMissedOnWashout = isWashoutMatch && (stats?.missedMatchIds?.has(m.match_id) ?? false);
+                            const isMissed = m.points === null && !isWashoutMatch;
+                            const isPerfect = stats?.perfectMatchIds?.has(m.match_id) ?? false;
+                            const missedPenaltyPts = (isMissed || isMissedOnWashout) ? (() => {
+                              const mn = m.match_number;
+                              if (mn <= 35) return 50;
+                              if (mn <= 70) return 70;
+                              return 90;
+                            })() : 0;
+                            const pts = (isMissed || isMissedOnWashout) ? -missedPenaltyPts : (m.points ?? 0);
                             const positive = pts > 0;
                             const zero = pts === 0;
                             const ptsColor = positive ? '#16a34a' : zero ? 'rgba(0,0,0,0.25)' : '#dc2626';
+                            const rowBg = isMissedOnWashout ? 'rgba(220,38,38,0.05)' : isMissed ? 'rgba(220,38,38,0.04)' : isWashoutMatch ? 'rgba(148,163,184,0.06)' : isPerfect ? 'rgba(167,139,250,0.06)' : 'transparent';
                             const metaA = getTeamMeta(m.team_a ?? undefined);
                             const metaB = getTeamMeta(m.team_b ?? undefined);
                             const abbrTeam = (name: string | null) => {
@@ -566,16 +661,22 @@ const Leaderboard = () => {
                               return name.slice(0, 3).toUpperCase();
                             };
                             const isLastMatch = mIdx === breakdown.length - 1;
+                            // Per-match streak info
+                            const msi = statsMap[row.user_id]?.matchStreaks?.[m.match_id];
+                            const winCorrect = msi?.winnerCorrect;
+                            const streakAfter = msi?.streakAtMatch ?? 0;
+                            const fiferEarned = msi?.fiferJustEarned ?? false;
                             return (
                               <Box
                                 key={m.match_id}
                                 sx={{
                                   display: 'grid',
-                                  gridTemplateColumns: '52px 1fr 64px',
+                                  gridTemplateColumns: '52px 1fr 48px 64px',
                                   alignItems: 'center',
                                   px: 2,
                                   py: 0.75,
                                   borderBottom: isLastMatch ? 'none' : '1px solid rgba(0,0,0,0.045)',
+                                  background: rowBg,
                                 }}
                               >
                                 {/* Match number badge */}
@@ -615,6 +716,59 @@ const Leaderboard = () => {
                                   </Box>
                                 </Box>
 
+                                {/* Per-match streak + perfect indicator */}
+                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.1 }}>
+                                  {/* Perfect + Fifer on same match — show both */}
+                                  {isPerfect && fiferEarned ? (
+                                    <>
+                                      <Box sx={{ display: 'flex', gap: 0.2 }}>
+                                        <Typography sx={{ fontSize: '0.72rem', lineHeight: 1 }}>🏆</Typography>
+                                        <Typography sx={{ fontSize: '0.72rem', lineHeight: 1 }}>🔥</Typography>
+                                      </Box>
+                                      <Typography sx={{ fontSize: '0.42rem', fontWeight: 800, color: '#7c3aed', lineHeight: 1 }}>PERFECT+FIFER</Typography>
+                                    </>
+                                  ) : isPerfect ? (
+                                    <>
+                                      <Typography sx={{ fontSize: '0.78rem', lineHeight: 1 }}>🏆</Typography>
+                                      <Typography sx={{ fontSize: '0.42rem', fontWeight: 800, color: '#7c3aed', lineHeight: 1 }}>PERFECT</Typography>
+                                    </>
+                                  ) : isMissedOnWashout ? (
+                                    <>
+                                      <Box sx={{ display: 'flex', gap: 0.2 }}>
+                                        <Typography sx={{ fontSize: '0.72rem', lineHeight: 1 }}>🌧</Typography>
+                                        <Typography sx={{ fontSize: '0.72rem', lineHeight: 1 }}>🚫</Typography>
+                                      </Box>
+                                      <Typography sx={{ fontSize: '0.42rem', fontWeight: 800, color: '#b91c1c', lineHeight: 1 }}>MISSED+WO</Typography>
+                                    </>
+                                  ) : isWashoutMatch ? (
+                                    <>
+                                      <Typography sx={{ fontSize: '0.78rem', lineHeight: 1 }}>🌧</Typography>
+                                      <Typography sx={{ fontSize: '0.42rem', fontWeight: 800, color: '#64748b', lineHeight: 1 }}>WASHOUT</Typography>
+                                    </>
+                                  ) : isMissed ? (
+                                    <>
+                                      <Typography sx={{ fontSize: '0.78rem', lineHeight: 1 }}>🚫</Typography>
+                                      <Typography sx={{ fontSize: '0.42rem', fontWeight: 800, color: '#dc2626', lineHeight: 1 }}>MISSED</Typography>
+                                    </>
+                                  ) : fiferEarned ? (
+                                    <>
+                                      <Typography sx={{ fontSize: '0.78rem', lineHeight: 1 }}>🔥</Typography>
+                                      <Typography sx={{ fontSize: '0.47rem', fontWeight: 800, color: '#c2410c', lineHeight: 1 }}>FIFER!</Typography>
+                                    </>
+                                  ) : winCorrect ? (
+                                    <>
+                                      <Typography sx={{ fontSize: '0.65rem', lineHeight: 1, color: '#16a34a', fontWeight: 900 }}>✓</Typography>
+                                      {streakAfter >= 2 && (
+                                        <Typography sx={{ fontSize: '0.47rem', fontWeight: 800, color: streakAfter >= 4 ? '#f59e0b' : '#16a34a', lineHeight: 1 }}>
+                                          ×{streakAfter}
+                                        </Typography>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <Typography sx={{ fontSize: '0.65rem', lineHeight: 1, color: '#dc2626', fontWeight: 900 }}>✗</Typography>
+                                  )}
+                                </Box>
+
                                 {/* Points */}
                                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                                   <Box
@@ -632,6 +786,141 @@ const Leaderboard = () => {
                               </Box>
                             );
                           })}
+                          {/* Perfect Match bonus row */}
+                          {(statsMap[row.user_id]?.perfectMatchIds?.size ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                px: 2, py: 0.85,
+                                mt: 0.25,
+                                mx: 1.5,
+                                borderRadius: '8px',
+                                background: 'rgba(167,139,250,0.1)',
+                                border: '1px solid rgba(167,139,250,0.3)',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Typography sx={{ fontSize: '0.75rem' }}>🏆</Typography>
+                                <Box>
+                                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#6d28d9', lineHeight: 1.2 }}>
+                                    Perfect Match ×{statsMap[row.user_id]?.perfectMatchIds?.size}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.58rem', color: 'rgba(0,0,0,0.4)', fontWeight: 500 }}>
+                                    All 4 predictions correct · +150 pts each
+                                  </Typography>
+                                </Box>
+                              </Box>
+                              <Box sx={{ px: 0.9, py: 0.3, borderRadius: '6px', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.35)' }}>
+                                <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#6d28d9', fontVariantNumeric: 'tabular-nums' }}>
+                                  +{(statsMap[row.user_id]?.perfectMatchIds?.size ?? 0) * 150}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          )}
+                          {/* Fifer bonus row */}
+                          {(statsMap[row.user_id]?.fiferCount ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                px: 2, py: 0.85,
+                                mt: 0.25,
+                                mx: 1.5,
+                                mb: 1,
+                                borderRadius: '8px',
+                                background: 'rgba(251,146,60,0.1)',
+                                border: '1px solid rgba(251,146,60,0.3)',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Typography sx={{ fontSize: '0.75rem' }}>🔥</Typography>
+                                <Box>
+                                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#c2410c', lineHeight: 1.2 }}>
+                                    Fifer Bonus ×{statsMap[row.user_id]?.fiferCount}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.58rem', color: 'rgba(0,0,0,0.4)', fontWeight: 500 }}>
+                                    5 consecutive correct winner predictions
+                                  </Typography>
+                                </Box>
+                              </Box>
+                              <Box sx={{ px: 0.9, py: 0.3, borderRadius: '6px', background: 'rgba(251,146,60,0.15)', border: '1px solid rgba(251,146,60,0.35)' }}>
+                                <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#c2410c', fontVariantNumeric: 'tabular-nums' }}>
+                                  +{(statsMap[row.user_id]?.fiferCount ?? 0) * 100}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          )}
+                          {/* Missed penalty summary row */}
+                          {(statsMap[row.user_id]?.missedMatchIds?.size ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                px: 2, py: 0.85,
+                                mt: 0.25,
+                                mx: 1.5,
+                                borderRadius: '8px',
+                                background: 'rgba(220,38,38,0.07)',
+                                border: '1px solid rgba(220,38,38,0.2)',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Typography sx={{ fontSize: '0.75rem' }}>🚫</Typography>
+                                <Box>
+                                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#b91c1c', lineHeight: 1.2 }}>
+                                    Missed ×{statsMap[row.user_id]?.missedMatchIds?.size}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.58rem', color: 'rgba(0,0,0,0.4)', fontWeight: 500 }}>
+                                    No prediction submitted · stage-based penalty
+                                  </Typography>
+                                </Box>
+                              </Box>
+                              <Box sx={{ px: 0.9, py: 0.3, borderRadius: '6px', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                                <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
+                                  −{statsMap[row.user_id]?.missedPenalty ?? 0}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          )}
+                          {/* Washout info row */}
+                          {(statsMap[row.user_id]?.washoutMatchIds?.size ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                px: 2, py: 0.85,
+                                mt: 0.25,
+                                mx: 1.5,
+                                borderRadius: '8px',
+                                background: 'rgba(100,116,139,0.07)',
+                                border: '1px solid rgba(100,116,139,0.2)',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Typography sx={{ fontSize: '0.75rem' }}>🌧</Typography>
+                                <Box>
+                                  <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', lineHeight: 1.2 }}>
+                                    Washout ×{statsMap[row.user_id]?.washoutMatchIds?.size}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: '0.58rem', color: 'rgba(0,0,0,0.4)', fontWeight: 500 }}>
+                                    Match abandoned · 0 pts · no penalty
+                                  </Typography>
+                                </Box>
+                              </Box>
+                              <Box sx={{ px: 0.9, py: 0.3, borderRadius: '6px', background: 'rgba(100,116,139,0.1)', border: '1px solid rgba(100,116,139,0.2)' }}>
+                                <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
+                                  0
+                                </Typography>
+                              </Box>
+                            </Box>
+                          )}
+                          {/* bottom spacing */}
+                          <Box sx={{ pb: 0.5 }} />
                         </>
                       )}
                     </Box>

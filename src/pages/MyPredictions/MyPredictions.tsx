@@ -48,6 +48,7 @@ interface EnrichedPrediction extends Prediction {
   bowlerName: string | null;
   momName: string | null;
   displayEmail: string;
+  display_name: string;
 }
 
 interface MatchPredictionGroup {
@@ -81,7 +82,6 @@ const formatDate = (dateStr: string, timeStr: string) => {
 const isMatchLocked = (match: Match): boolean =>
   new Date() >= new Date(`${match.match_date}T${match.match_time}`);
 
-const getDisplayName = (email: string) => email.split('@')[0];
 
 // ─── Table primitives ─────────────────────────────────────────────────────────
 
@@ -142,6 +142,7 @@ const MyPredictions = () => {
   const [loading, setLoading] = useState(true);
   const [expandedMatch, setExpandedMatch] = useState<string | number | null>(null);
   const [correctAnswers, setCorrectAnswers] = useState<CorrectAnswer[]>([]);
+  const [allUsers, setAllUsers] = useState<{ user_id: string; display_name: string }[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -164,6 +165,12 @@ const MyPredictions = () => {
         .select('id, match_id, user_id, user_email, predicted_winner, predicted_batter_id, predicted_batter_name, predicted_bowler_id, predicted_bowler_name, predicted_mom_id, predicted_mom_name, is_double_trouble')
         .in('match_id', matchIds);
 
+      // Fetch all registered users for missed-prediction list
+      const { data: usersData } = await supabase
+        .from('leaderboard')
+        .select('user_id, display_name');
+      setAllUsers((usersData ?? []) as { user_id: string; display_name: string }[]);
+
       const predictions = (predsData || []) as Prediction[];
 
       // Player names are stored directly on each prediction row — no extra query needed
@@ -171,13 +178,18 @@ const MyPredictions = () => {
       const grouped: MatchPredictionGroup[] = lockedMatches.map((match) => {
         const preds: EnrichedPrediction[] = predictions
           .filter((p) => Number(p.match_id) === Number(match.id))
-          .map((p) => ({
-            ...p,
-            displayEmail: p.user_email || (p.user_id === session?.user?.id ? session?.user?.email ?? p.user_id : p.user_id),
-            batterName: p.predicted_batter_name || null,
-            bowlerName: p.predicted_bowler_name || null,
-            momName: p.predicted_mom_name || null,
-          }));
+          .map((p) => {
+            // Find display_name from allUsers
+            const user = (allUsers || []).find(u => u.user_id === p.user_id);
+            return {
+              ...p,
+              displayEmail: p.user_email || (p.user_id === session?.user?.id ? session?.user?.email ?? p.user_id : p.user_id),
+              batterName: p.predicted_batter_name || null,
+              bowlerName: p.predicted_bowler_name || null,
+              momName: p.predicted_mom_name || null,
+              display_name: user?.display_name || p.user_email || p.user_id,
+            };
+          });
 
         // Current user always first
         preds.sort((a, b) => {
@@ -233,9 +245,11 @@ const MyPredictions = () => {
 
     let pts: number;
     if (pred.is_double_trouble) {
+      // DT: all earned pts ×2; wrong winner → penalty of -winner_pts×2
       pts = basePts * 2 - (!wCorrect ? wPts * 2 : 0);
     } else {
-      pts = basePts;
+      // Non-DT: wrong winner → subtract winner_pts as penalty
+      pts = basePts - (!wCorrect ? wPts : 0);
     }
 
     if (allCorrect) pts += 150;
@@ -300,12 +314,16 @@ const MyPredictions = () => {
     const allOk = wOk && bOk && bowOk && mOk;
     const isDT = myLatestPred.is_double_trouble;
     const base = (wOk ? wPts : 0) + (bOk ? pPts : 0) + (bowOk ? pPts : 0) + (mOk ? pPts : 0);
-    let total = isDT ? base * 2 - (!wOk ? wPts * 2 : 0) : base;
+    let total = isDT
+      ? base * 2 - (!wOk ? wPts * 2 : 0)
+      : base - (!wOk ? wPts : 0);
     if (allOk) total += 150;
+    // Penalty amount shown in banner chips
+    const wPenalty = !wOk ? (isDT ? wPts * 2 : wPts) : 0;
     return {
       total,
       cats: [
-        { label: 'Winner', ok: wOk, pts: isDT ? (wOk ? wPts * 2 : -(wPts * 2)) : (wOk ? wPts : 0), penalty: !wOk && isDT ? wPts * 2 : 0 },
+        { label: 'Winner', ok: wOk, pts: wOk ? (isDT ? wPts * 2 : wPts) : -wPenalty, penalty: wPenalty },
         { label: 'Batter', ok: bOk, pts: bOk ? (isDT ? pPts * 2 : pPts) : 0 },
         { label: 'Bowler', ok: bowOk, pts: bowOk ? (isDT ? pPts * 2 : pPts) : 0 },
         { label: 'MOM', ok: mOk, pts: mOk ? (isDT ? pPts * 2 : pPts) : 0 },
@@ -506,10 +524,115 @@ const MyPredictions = () => {
                             <Th>Bowler</Th>
                             <Th>MOM</Th>
                             <Th align="center">DT</Th>
+                            <Th align="center">PM</Th>
                             <Th align="center">Pts</Th>
                           </tr>
                         </thead>
                         <tbody>
+                          {/* ─── Top Picks row ─── */}
+                          {(() => {
+                            const total = predictions.length;
+                            if (total === 0) return null;
+
+                            const winnerCounts: Record<string, number> = {};
+                            predictions.forEach((p) => { if (p.predicted_winner) winnerCounts[p.predicted_winner] = (winnerCounts[p.predicted_winner] ?? 0) + 1; });
+                            const topWinner = Object.entries(winnerCounts).sort((a, b) => b[1] - a[1])[0];
+
+                            const batterCounts: Record<string, number> = {};
+                            predictions.forEach((p) => { if (p.batterName) batterCounts[p.batterName] = (batterCounts[p.batterName] ?? 0) + 1; });
+                            const topBatter = Object.entries(batterCounts).sort((a, b) => b[1] - a[1])[0];
+
+                            const bowlerCounts: Record<string, number> = {};
+                            predictions.forEach((p) => { if (p.bowlerName) bowlerCounts[p.bowlerName] = (bowlerCounts[p.bowlerName] ?? 0) + 1; });
+                            const topBowler = Object.entries(bowlerCounts).sort((a, b) => b[1] - a[1])[0];
+
+                            const momCounts: Record<string, number> = {};
+                            predictions.forEach((p) => { if (p.momName) momCounts[p.momName] = (momCounts[p.momName] ?? 0) + 1; });
+                            const topMom = Object.entries(momCounts).sort((a, b) => b[1] - a[1])[0];
+
+                            const ca = getCorrectAnswer(match.id);
+
+                            const pct = (count: number) => Math.round((count / total) * 100);
+
+                            // Check correctness per field
+                            const wCorrect = ca && topWinner && ca.winner === topWinner[0];
+                            const bCorrect = ca && topBatter && predictions.some((p) => p.batterName === topBatter[0] && ca.batter_id && Number(p.predicted_batter_id) === ca.batter_id);
+                            const bowCorrect = ca && topBowler && predictions.some((p) => p.bowlerName === topBowler[0] && ca.bowler_id && Number(p.predicted_bowler_id) === ca.bowler_id);
+                            const mCorrect = ca && topMom && predictions.some((p) => p.momName === topMom[0] && ca.mom_id && Number(p.predicted_mom_id) === ca.mom_id);
+
+                            const PickCell = ({ name, count, isWinner = false, correct = false }: { name: string; count: number; isWinner?: boolean; correct?: boolean }) => {
+                              const p = pct(count);
+                              const meta = isWinner ? getTeamMeta(name) : null;
+                              return (
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.3 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    {isWinner && meta && (
+                                      <Box sx={{ width: 16, height: 16, borderRadius: '4px', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center', p: '2px', flexShrink: 0 }}>
+                                        {meta.logo && <img src={meta.logo} alt={name} style={{ width: 12, height: 12, objectFit: 'contain' }} />}
+                                      </Box>
+                                    )}
+                                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: correct ? '#15803d' : '#1e3a5f', whiteSpace: 'nowrap' }}>
+                                      {isWinner ? abbr(name) : name}{correct ? ' ✓' : ''}
+                                    </Typography>
+                                  </Box>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    <Box sx={{ flex: 1, height: 3, borderRadius: '2px', background: 'rgba(59,130,246,0.15)', overflow: 'hidden', minWidth: 32 }}>
+                                      <Box sx={{ height: '100%', borderRadius: '2px', width: `${p}%`, background: correct ? '#16a34a' : '#3b82f6', transition: 'width 0.4s ease' }} />
+                                    </Box>
+                                    <Typography sx={{ fontSize: '0.58rem', fontWeight: 800, color: correct ? '#15803d' : '#374151', whiteSpace: 'nowrap' }}>{p}%</Typography>
+                                  </Box>
+                                </Box>
+                              );
+                            };
+
+                            return (
+                              <>
+                                {/* Label row */}
+                                {/* Data row */}
+                                <tr style={{ borderBottom: '2px solid rgba(59,130,246,0.12)' }}>
+                                  {/* # placeholder */}
+                                  <td style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.04)', verticalAlign: 'middle' }}>
+                                    <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: 'rgba(59,130,246,0.5)' }}>📊</Typography>
+                                  </td>
+                                  {/* Name — sticky */}
+                                  <td style={{ padding: '8px 14px', background: 'rgba(219,234,254,1)', position: 'sticky', left: 0, zIndex: 1, boxShadow: '2px 0 4px rgba(0,0,0,0.06)', verticalAlign: 'middle' }}>
+                                    <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: '#1e40af', whiteSpace: 'nowrap' }}>Top Pick</Typography>
+                                  </td>
+                                  {/* Winner */}
+                                  <td style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.04)', verticalAlign: 'middle' }}>
+                                    {topWinner ? <PickCell name={topWinner[0]} count={topWinner[1]} isWinner correct={!!wCorrect} /> : <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,0,0,0.2)' }}>—</Typography>}
+                                  </td>
+                                  {/* Batter */}
+                                  <td style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.04)', verticalAlign: 'middle' }}>
+                                    {topBatter ? <PickCell name={topBatter[0]} count={topBatter[1]} correct={!!bCorrect} /> : <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,0,0,0.2)' }}>—</Typography>}
+                                  </td>
+                                  {/* Bowler */}
+                                  <td style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.04)', verticalAlign: 'middle' }}>
+                                    {topBowler ? <PickCell name={topBowler[0]} count={topBowler[1]} correct={!!bowCorrect} /> : <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,0,0,0.2)' }}>—</Typography>}
+                                  </td>
+                                  {/* MOM */}
+                                  <td style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.04)', verticalAlign: 'middle' }}>
+                                    {topMom ? <PickCell name={topMom[0]} count={topMom[1]} correct={!!mCorrect} /> : <Typography sx={{ fontSize: '0.7rem', color: 'rgba(0,0,0,0.2)' }}>—</Typography>}
+                                  </td>
+                                  {/* DT / PM / Pts — empty */}
+                                  {[0,1,2].map((i) => (
+                                    <td key={i} style={{ padding: '8px 14px', background: 'rgba(59,130,246,0.04)', textAlign: 'center', verticalAlign: 'middle' }}>
+                                      <Typography sx={{ fontSize: '0.7rem', color: 'rgba(59,130,246,0.2)' }}>—</Typography>
+                                    </td>
+                                  ))}
+                                </tr>
+                                {/* Divider before user rows */}
+                                <tr>
+                                  <td colSpan={9} style={{ padding: '5px 14px 3px', background: '#f8f8f8', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                                    <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: 'rgba(0,0,0,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                                      Predictions
+                                    </Typography>
+                                  </td>
+                                </tr>
+                              </>
+                            );
+                          })()}
+                          {/* ─── Predicted rows ─── */}
                           {predictions.map((pred, idx) => {
                             const isMe = pred.user_id === session?.user?.id;
                             const ca = getCorrectAnswer(match.id);
@@ -518,8 +641,9 @@ const MyPredictions = () => {
                             const batterCorrect = isFieldCorrect(pred, ca, 'batter');
                             const bowlerCorrect = isFieldCorrect(pred, ca, 'bowler');
                             const momCorrect = isFieldCorrect(pred, ca, 'mom');
+                            const isPerfectMatch = winnerCorrect && batterCorrect && bowlerCorrect && momCorrect;
                             return (
-                              <tr key={pred.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                              <tr key={pred.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', background: isPerfectMatch ? 'rgba(167,139,250,0.06)' : undefined }}>
 
                                 {/* # */}
                                 <Td highlight={isMe}>
@@ -532,7 +656,7 @@ const MyPredictions = () => {
                                     <Box>
                                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                         <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: '#000', whiteSpace: 'nowrap' }}>
-                                          {getDisplayName(pred.displayEmail)}
+                                          {pred.display_name}
                                         </Typography>
                                         {isMe && (
                                           <Chip label="You" size="small" sx={{ height: 16, fontSize: '0.52rem', fontWeight: 800, background: '#000', color: '#fff', borderRadius: '4px', '& .MuiChip-label': { px: 0.6 } }} />
@@ -574,11 +698,23 @@ const MyPredictions = () => {
                                   )}
                                 </Td>
 
+                                {/* PM — Perfect Match */}
+                                <Td align="center" highlight={isMe}>
+                                  {isPerfectMatch ? (
+                                    <Box sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 0.3, px: 0.7, py: 0.3, borderRadius: '6px', background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.45)' }}>
+                                      <Typography sx={{ fontSize: '0.72rem', lineHeight: 1 }}>🏆</Typography>
+                                      <Typography sx={{ fontSize: '0.6rem', fontWeight: 800, color: '#6d28d9', lineHeight: 1 }}>+150</Typography>
+                                    </Box>
+                                  ) : (
+                                    <Typography sx={{ fontSize: '0.72rem', color: 'rgba(0,0,0,0.18)', fontWeight: 600 }}>—</Typography>
+                                  )}
+                                </Td>
+
                                 {/* Pts */}
                                 <Td align="center" highlight={isMe} correct={pts !== null && pts > 0}>
                                   {pts !== null ? (
-                                    <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: pts > 0 ? '#15803d' : 'rgba(0,0,0,0.35)' }}>
-                                      {pts}
+                                    <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: pts > 0 ? '#15803d' : pts < 0 ? '#dc2626' : 'rgba(0,0,0,0.35)' }}>
+                                      {pts > 0 ? `+${pts}` : pts}
                                     </Typography>
                                   ) : (
                                     <Typography sx={{ fontSize: '0.72rem', color: 'rgba(0,0,0,0.18)', fontWeight: 600 }}>—</Typography>
@@ -587,10 +723,68 @@ const MyPredictions = () => {
                               </tr>
                             );
                           })}
+
+                          {/* ─── Missed rows ─── */}
+                          {(() => {
+                            const predictedUserIds = new Set(predictions.map((p) => p.user_id));
+                            const missed = allUsers.filter((u) => !predictedUserIds.has(u.user_id));
+                            const ca = getCorrectAnswer(match.id);
+                            const penalty = stagePoints(match.match_number).winner;
+                            if (missed.length === 0) return null;
+                            return (
+                              <>
+                                <tr>
+                                  <td colSpan={9} style={{ padding: '6px 14px 4px', background: '#fafafa', borderTop: '2px solid rgba(220,38,38,0.15)' }}>
+                                    <Typography sx={{ fontSize: '0.58rem', fontWeight: 800, color: 'rgba(220,38,38,0.55)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                                      Missed ({missed.length}){ca ? ` · −${penalty} pts each` : ''}
+                                    </Typography>
+                                  </td>
+                                </tr>
+                                {missed.map((u, mi) => (
+                                  <tr key={u.user_id} style={{ borderBottom: '1px solid rgba(0,0,0,0.04)', background: 'rgba(220,38,38,0.025)' }}>
+                                    {/* # */}
+                                    <td style={{ padding: '9px 14px', verticalAlign: 'middle' }}>
+                                      <Typography sx={{ fontWeight: 700, fontSize: '0.72rem', color: 'rgba(220,38,38,0.4)' }}>{predictions.length + mi + 1}</Typography>
+                                    </td>
+                                    {/* Name — sticky */}
+                                    <td style={{ padding: '9px 14px', verticalAlign: 'middle', position: 'sticky', left: 0, zIndex: 1, background: 'rgba(255,245,245,1)', boxShadow: '2px 0 4px rgba(0,0,0,0.06)' }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, minWidth: 90 }}>
+                                        <Box sx={{ width: 22, height: 22, borderRadius: '6px', background: 'rgba(220,38,38,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                          <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: '#dc2626', lineHeight: 1 }}>
+                                            {u.display_name.charAt(0).toUpperCase()}
+                                          </Typography>
+                                        </Box>
+                                        <Typography sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'rgba(220,38,38,0.6)', whiteSpace: 'nowrap' }}>
+                                          {u.display_name}
+                                        </Typography>
+                                      </Box>
+                                    </td>
+                                    {/* Empty cells for Winner/Batter/Bowler/MOM/DT/PM */}
+                                    {[0,1,2,3,4,5].map((ci) => (
+                                      <td key={ci} style={{ padding: '9px 14px', textAlign: 'center', verticalAlign: 'middle', background: 'rgba(255,245,245,0.7)' }}>
+                                        <Typography sx={{ fontSize: '0.7rem', color: 'rgba(220,38,38,0.25)', fontWeight: 600 }}>—</Typography>
+                                      </td>
+                                    ))}
+                                    {/* Pts — penalty */}
+                                    <td style={{ padding: '9px 14px', textAlign: 'center', verticalAlign: 'middle', background: 'rgba(255,245,245,0.7)' }}>
+                                      {ca ? (
+                                        <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#dc2626' }}>
+                                          −{penalty}
+                                        </Typography>
+                                      ) : (
+                                        <Typography sx={{ fontSize: '0.72rem', color: 'rgba(220,38,38,0.3)', fontWeight: 600 }}>—</Typography>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </>
+                            );
+                          })()}
                         </tbody>
                       </table>
                     </Box>
                   )}
+
                 </Box>
               )}
             </Box>

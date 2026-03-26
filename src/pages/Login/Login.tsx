@@ -366,6 +366,10 @@ const Login = () => {
             <Typography className={styles.footerNote}>
               Having trouble? Contact your league admin for access.
             </Typography>
+
+            <Typography className={styles.footerNote}>
+              <strong>Note :</strong> It's just made for entertainment purposes no real money is involved
+            </Typography>
             <Link
               to="/rules-public?from=login"
               style={{
@@ -373,10 +377,10 @@ const Login = () => {
                 alignItems: 'center',
                 gap: '0.3rem',
                 marginTop: '0.75rem',
-                fontSize: '0.82rem',
+                fontSize: '0.85rem',
                 fontWeight: 600,
                 color: '#000',
-                opacity: 0.5,
+                opacity: 0.75,
                 textDecoration: 'none',
               }}
             >

@@ -4,7 +4,6 @@ import BoltIcon from '@mui/icons-material/Bolt';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import Navbar from '../../components/Navbar/Navbar';
 import styles from './Rules.module.css';
 
@@ -65,11 +64,6 @@ const tournamentProgression: Array<{ label: string; value: number }> = [
   { label: 'Tournament Winner', value: 200 },
 ];
 
-const specialSituations: string[] = [
-  'If the IPL season is paused, the prediction game will resume when the season continues.',
-  'For tied top scorers/wicket-takers, strike rate/economy rate will be considered. If the Top Scorer and Top Wicket-Taker are tied, the Strike Rate and Economy Rate will be considered. If the tie persists, the batsman with the most sixes and the bowler with the most dot balls will be given preference.',
-  'Rules may be updated during the season with advance notice.',
-];
 
 const Rules = () => {
   const [searchParams] = useSearchParams();
@@ -130,6 +124,40 @@ const Rules = () => {
           ))}
         </Box>
 
+        {/* ── Scoring Calculation ─────────────────────────────── */}
+        <Typography variant="h6" className={styles.sectionTitle}>
+          Scoring Calculation
+        </Typography>
+        <Box className={styles.sectionDivider} />
+        <Paper className={styles.noteCard} elevation={0}>
+          <ul>
+            <li>
+              <strong>Wrong Winning Team Prediction:</strong> If you predict the wrong winning team, you will receive a minus penalty based on the stage:<br/>
+              Stage 1: -50 pts, Stage 2: -70 pts, Final Stage: -90 pts.
+            </li>
+            <li>
+              <strong>Missed Prediction or Washout:</strong> If you miss making a prediction and the match is washed out, you will still receive minus points equal to the winning team penalty for that stage.
+            </li>
+            <li>
+              <strong>Double Trouble Penalty:</strong> If your winning team prediction is wrong and you have used Double Trouble (DT), the penalty will be doubled:<br/>
+              Stage 1: -100 pts, Stage 2: -140 pts, Final Stage: -180 pts.
+            </li>
+            <li>
+              <strong>Streak & Washout:</strong> If a match is washed out, your winning streak will not be broken and will continue.
+            </li>
+            <li>
+              <strong>Special Situations:</strong>
+              <ul>
+                <li>If the IPL season is paused, the prediction game will resume when the season continues.</li>
+                <li>For tied top scorers/wicket-takers, strike rate/economy rate will be considered. If the Top Scorer and Top Wicket-Taker are tied, the Strike Rate and Economy Rate will be considered. If the tie persists, the batsman with the most sixes and the bowler with the most dot balls will be given preference.</li>
+                <li>Rules may be updated during the season with advance notice.</li>
+              </ul>
+            </li>
+            <li>
+              <strong>Rain &amp; Match Abandonment Policy:</strong> If a match is washed out or abandoned for any reason, your Double Trouble will be considered used and will not be refunded. All other predictions will earn zero points — no positive points will be awarded. If you fail to make a prediction for any match (regardless of abandonment), it will be treated as a missed prediction with zero points.
+            </li>
+          </ul>
+        </Paper>
         <Typography variant="h6" className={styles.sectionTitle}>
           Specials Rules
         </Typography>
@@ -215,37 +243,10 @@ const Rules = () => {
         </Box>
 
         {/* ── Special Situations ─────────────────────────────────── */}
-        <Typography variant="h6" className={styles.sectionTitle}>
-          Special Situations
-        </Typography>
-        <Box className={styles.sectionDivider} />
-
-        <Paper className={styles.noteCard} elevation={0}>
-          <ul className={styles.situationsList}>
-            {specialSituations.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
-        </Paper>
+        {/* Special Situations moved to Scoring Calculation */}
 
         {/* ── Rain & Abandonment Policy ───────────────────────────── */}
-        <Typography variant="h6" className={styles.sectionTitle}>
-          Rain &amp; Match Abandonment Policy
-        </Typography>
-        <Box className={styles.sectionDivider} />
-
-        <Paper className={styles.rainCard} elevation={0}>
-          <Box className={styles.rainCardTop}>
-            <NotificationsActiveIcon className={styles.rainIcon} />
-            <Typography className={styles.rainCardTitle}>Rain &amp; Match Abandonment Policy</Typography>
-          </Box>
-          <Typography className={styles.rainCardDesc}>
-            If a match is washed out or abandoned for any reason, your Double Trouble will be
-            considered used and will not be refunded. All other predictions will earn zero points —
-            no positive points will be awarded. If you fail to make a prediction for any match
-            (regardless of abandonment), it will be treated as a missed prediction with zero points.
-          </Typography>
-        </Paper>
+        {/* Rain & Match Abandonment Policy moved to Scoring Calculation */}
 
       </Container>
     </Box>

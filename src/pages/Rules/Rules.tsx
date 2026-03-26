@@ -66,7 +66,6 @@ const tournamentProgression: Array<{ label: string; value: number }> = [
 ];
 
 const specialSituations: string[] = [
-  'For canceled/no result matches, Double Trouble will be wasted if selected.',
   'If the IPL season is paused, the prediction game will resume when the season continues.',
   'For tied top scorers/wicket-takers, strike rate/economy rate will be considered. If the Top Scorer and Top Wicket-Taker are tied, the Strike Rate and Economy Rate will be considered. If the tie persists, the batsman with the most sixes and the bowler with the most dot balls will be given preference.',
   'Rules may be updated during the season with advance notice.',
@@ -96,6 +95,10 @@ const Rules = () => {
           <Typography variant="body1" className={styles.heroSubtitle}>
             Full scoring rules for every match. Read carefully before placing your
             predictions, including special bonuses and penalties.
+          </Typography>
+
+          <Typography variant="body1" className={styles.heroSubtitle}>
+              <strong>Note :</strong> It's just made for entertainment purposes no real money is involved
           </Typography>
         </Box>
 
@@ -172,28 +175,6 @@ const Rules = () => {
             </Typography>
           </Paper>
         </Box>
-
-        <Typography variant="h6" className={styles.sectionTitle}>
-          Other Rules
-        </Typography>
-        <Box className={styles.sectionDivider} />
-
-        <Paper className={styles.noteCard} elevation={0}>
-          <Typography className={styles.noteText}>
-            <strong>Predictions are locked</strong> once you submit them. You cannot change your
-            predictions on any circumstances.
-          </Typography>
-          <ul className={styles.list}>
-            <li>
-              <strong>Rain / No Result:</strong> if there is rain and the match cannot be played,
-              match points will be given as 0.
-            </li>
-            <li>
-              Even if you picked <strong>Double Trouble</strong> for that match, the bonus will be
-              wasted because match points become 0.
-            </li>
-          </ul>
-        </Paper>
 
         {/* ── Bonus Stage ────────────────────────────────────────── */}
         <Typography variant="h6" className={styles.sectionTitle}>

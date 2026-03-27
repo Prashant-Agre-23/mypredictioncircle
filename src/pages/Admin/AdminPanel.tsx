@@ -73,6 +73,24 @@ const teamAbbr = (name?: string) => {
 const AdminPanel = () => {
   const navigate = useNavigate();
   const { session, isAdmin } = useAuth();
+    const [displayName, setDisplayName] = useState<string | null>(null);
+
+    useEffect(() => {
+      let mounted = true;
+      const fetchName = async () => {
+        if (!session?.user?.id) return;
+        const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).single();
+        if (!mounted) return;
+        if (prof?.display_name) setDisplayName(prof.display_name);
+        else {
+          const { data: lb } = await supabase.from('leaderboard').select('display_name').eq('user_id', session.user.id).single();
+          if (!mounted) return;
+          if (lb?.display_name) setDisplayName(lb.display_name);
+        }
+      };
+      fetchName();
+      return () => { mounted = false; };
+    }, [session?.user?.id]);
 
   const [matches, setMatches] = useState<Match[]>([]);
   const [allMatches, setAllMatches] = useState<Match[]>([]); // all matches for time-edit picker
@@ -316,7 +334,7 @@ const AdminPanel = () => {
             </Box>
           </Box>
           <Chip
-            label={session?.user?.email}
+            label={displayName || session?.user?.email}
             size="small"
             sx={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontSize: '0.65rem', fontWeight: 700, borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)' }}
           />

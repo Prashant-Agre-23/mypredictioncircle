@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
@@ -30,12 +30,14 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import SportsCricketIcon from '@mui/icons-material/SportsCricket';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../config/supabaseClient';
 import styles from './Navbar.module.css';
 
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { session, signOut, isAdmin } = useAuth();
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -60,7 +62,27 @@ const Navbar = () => {
   };
 
   const isActive = (path: string) => location.pathname === path;
-  const userInitial = session?.user?.email?.charAt(0).toUpperCase() || 'U';
+  const userInitial = (displayName ? displayName.charAt(0).toUpperCase() : session?.user?.email?.charAt(0).toUpperCase()) || 'U';
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchName = async () => {
+      if (!session?.user?.id) return;
+      // Try profiles first
+      const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).single();
+      if (!mounted) return;
+      if (prof?.display_name) {
+        setDisplayName(prof.display_name);
+        return;
+      }
+      // fallback to leaderboard
+      const { data: lb } = await supabase.from('leaderboard').select('display_name').eq('user_id', session.user.id).single();
+      if (!mounted) return;
+      if (lb?.display_name) setDisplayName(lb.display_name);
+    };
+    fetchName();
+    return () => { mounted = false; };
+  }, [session?.user?.id]);
 
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: <HomeIcon /> },
@@ -119,7 +141,7 @@ const Navbar = () => {
           <Box className={styles.rightSection}>
           {/* Desktop avatar → dropdown */}
             {!isMobile && (
-              <Tooltip title={session?.user?.email || 'Account'}>
+              <Tooltip title={displayName || session?.user?.email || 'Account'}>
                 <IconButton onClick={handleMenuOpen} className={styles.userButtonIcon} sx={{ ml: 0.25 }}>
                   <Avatar className={styles.avatar}>{userInitial}</Avatar>
                 </IconButton>
@@ -142,7 +164,7 @@ const Navbar = () => {
                   <Avatar className={styles.menuHeaderAvatar}>{userInitial}</Avatar>
                   <Box sx={{ overflow: 'hidden' }}>
                     <Typography className={styles.menuHeaderEmail}>
-                      {session?.user?.email}
+                      {displayName || session?.user?.email}
                     </Typography>
                     <Typography className={styles.menuHeaderRole}>Member</Typography>
                   </Box>
@@ -205,11 +227,11 @@ const Navbar = () => {
 
           {/* User + logout */}
           <Box className={styles.mobileUserSection}>
-            <Box className={styles.mobileUserCard}>
+                <Box className={styles.mobileUserCard}>
               <Avatar className={styles.mobileUserAvatar}>{userInitial}</Avatar>
               <Box sx={{ overflow: 'hidden' }}>
                 <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: '#000', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {session?.user?.email}
+                  {displayName || session?.user?.email}
                 </Typography>
                 <Typography sx={{ fontSize: '0.68rem', color: 'rgba(0,0,0,0.45)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                   Member

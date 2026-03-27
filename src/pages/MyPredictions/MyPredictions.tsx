@@ -79,6 +79,15 @@ const formatDate = (dateStr: string, timeStr: string) => {
   return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+const nameFromEmail = (email?: string | null) => {
+  if (!email) return null;
+  const local = email.split('@')[0];
+  // replace dots, underscores and other separators with space
+  const parts = local.replace(/[_\.]+/g, ' ').split(/\s+/).filter(Boolean);
+  const capitalized = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  return capitalized || null;
+};
+
 const isMatchLocked = (match: Match): boolean =>
   new Date() >= new Date(`${match.match_date}T${match.match_time}`);
 
@@ -168,8 +177,22 @@ const MyPredictions = () => {
       // Fetch all registered users for missed-prediction list
       const { data: usersData } = await supabase
         .from('leaderboard')
-        .select('user_id, display_name');
-      setAllUsers((usersData ?? []) as { user_id: string; display_name: string }[]);
+        .select('user_id, display_name, email');
+
+      const users = (usersData ?? []) as { user_id: string; display_name: string | null; email?: string | null }[];
+      const isEmailLike = (s?: string | null) => !!s && /\S+@\S+\.\S+/.test(s);
+      const missingIds = users.filter(u => !u.display_name || isEmailLike(u.display_name)).map(u => u.user_id);
+      let profMap: Record<string, string> = {};
+      if (missingIds.length > 0) {
+        const { data: profs } = await supabase.from('profiles').select('id, display_name').in('id', missingIds);
+        for (const p of profs ?? []) profMap[p.id] = p.display_name;
+      }
+
+      const mergedUsers = users.map(u => ({
+        user_id: u.user_id,
+        display_name: (u.display_name && !isEmailLike(u.display_name)) ? u.display_name : (profMap[u.user_id] || nameFromEmail(u.email) || u.user_id),
+      }));
+      setAllUsers(mergedUsers as { user_id: string; display_name: string }[]);
 
       const predictions = (predsData || []) as Prediction[];
 
@@ -178,16 +201,17 @@ const MyPredictions = () => {
       const grouped: MatchPredictionGroup[] = lockedMatches.map((match) => {
         const preds: EnrichedPrediction[] = predictions
           .filter((p) => Number(p.match_id) === Number(match.id))
-          .map((p) => {
-            // Find display_name from allUsers
-            const user = (allUsers || []).find(u => u.user_id === p.user_id);
+            .map((p) => {
+            // Find display_name from mergedUsers (local, not stale state)
+            const user = mergedUsers.find(u => u.user_id === p.user_id);
+            const fallbackFromEmail = nameFromEmail(p.user_email) || (p.user_id === session?.user?.id ? nameFromEmail(session?.user?.email ?? undefined) : null);
             return {
               ...p,
               displayEmail: p.user_email || (p.user_id === session?.user?.id ? session?.user?.email ?? p.user_id : p.user_id),
               batterName: p.predicted_batter_name || null,
               bowlerName: p.predicted_bowler_name || null,
               momName: p.predicted_mom_name || null,
-              display_name: user?.display_name || p.user_email || p.user_id,
+              display_name: user?.display_name || fallbackFromEmail || p.user_id,
             };
           });
 

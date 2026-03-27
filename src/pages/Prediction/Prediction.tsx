@@ -246,6 +246,28 @@ const Prediction = () => {
   const canUseDT = dtRemaining > 0;
 
   const { session } = useAuth();
+  const [displayName, setDisplayName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchDisplayName = async () => {
+      if (!session?.user?.id) return;
+      const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).single();
+      if (!mounted) return;
+      if (prof?.display_name) { setDisplayName(prof.display_name); return; }
+      const { data: lb } = await supabase.from('leaderboard').select('display_name').eq('user_id', session.user.id).single();
+      if (!mounted) return;
+      if (lb?.display_name && !/\S+@\S+\.\S+/.test(lb.display_name)) { setDisplayName(lb.display_name); return; }
+      // derive from email
+      const email = session.user.email ?? '';
+      const local = email.split('@')[0];
+      const parts = local.replace(/[_.]+/g, ' ').split(/\s+/).filter(Boolean);
+      const derived = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+      if (derived) setDisplayName(derived);
+    };
+    fetchDisplayName();
+    return () => { mounted = false; };
+  }, [session?.user?.id]);
 
   // ── Match lock: true once match start time has passed ─────────────────────
   const isMatchStarted = (m: MatchDetail | null): boolean => {
@@ -1194,14 +1216,14 @@ const Prediction = () => {
         }}
       >
         {/* Modal header */}
-        <Box sx={{ background: '#000', px: 3, pt: 3, pb: 2.5 }}>
-          <Typography sx={{ fontWeight: 900, fontSize: '1.1rem', color: '#fff', mb: 0.4 }}>
+        <Box sx={{ background: '#000', px: 2.5, pt: 2.5, pb: 2 }}>
+          <Typography sx={{ fontWeight: 900, fontSize: { xs: '0.95rem', sm: '1.1rem' }, color: '#fff', mb: 0.4 }}>
             {isEditing ? 'Update Prediction' : 'Confirm Prediction'}
           </Typography>
-          <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>
+          <Typography sx={{ fontSize: { xs: '0.65rem', sm: '0.72rem' }, color: 'rgba(255,255,255,0.45)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             Match {match?.match_number} · {match?.team_a} vs {match?.team_b}
           </Typography>
-          <Typography sx={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', mt: 0.3 }}>
+          <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', mt: 0.3 }}>
             {match?.match_date} · {match?.match_time}
           </Typography>
         </Box>
@@ -1215,30 +1237,30 @@ const Prediction = () => {
             { label: 'Man of the Match', value: playerName(selections.mom), isTeam: false },
           ].map((row, i) => (
             <Box key={i}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 3, py: 1.75 }}>
-                <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2.5, py: 1.4 }}>
+                <Typography sx={{ fontSize: { xs: '0.6rem', sm: '0.68rem' }, fontWeight: 700, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0, mr: 1 }}>
                   {row.label}
                 </Typography>
-                <Typography sx={{ fontSize: '0.88rem', fontWeight: 800, color: '#000', textAlign: 'right', maxWidth: '55%' }}>
+                <Typography sx={{ fontSize: { xs: '0.78rem', sm: '0.88rem' }, fontWeight: 800, color: '#000', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>
                   {row.value}
                 </Typography>
               </Box>
-              {i < 3 && <Divider sx={{ mx: 3 }} />}
+              {i < 3 && <Divider sx={{ mx: 2.5 }} />}
             </Box>
           ))}
 
           {/* User info */}
-          <Box sx={{ mx: 3, mb: 2, mt: 1, px: 2, py: 1.25, background: '#f5f5f7', borderRadius: '12px' }}>
-            <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(0,0,0,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.3 }}>
+          <Box sx={{ mx: 2.5, mb: 2, mt: 1, px: 2, py: 1.25, background: '#f5f5f7', borderRadius: '12px' }}>
+            <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: 'rgba(0,0,0,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', mb: 0.3 }}>
               Submitting as
             </Typography>
-            <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: '#000' }}>
-              {session?.user.email}
+            <Typography sx={{ fontSize: { xs: '0.72rem', sm: '0.8rem' }, fontWeight: 700, color: '#000', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {displayName || session?.user.email}
             </Typography>
           </Box>
 
           {/* ── Double Trouble toggle ── */}
-          <Box sx={{ mx: 3, mb: 2.5 }}>
+          <Box sx={{ mx: 2.5, mb: 2.5 }}>
             <Box
               onClick={() => {
                 if (!canUseDT && !useDoubleTrouble) return; // can't toggle on if no DT left
@@ -1261,7 +1283,7 @@ const Prediction = () => {
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
                   <Typography sx={{ fontSize: '1rem' }}>⚡</Typography>
-                  <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', color: useDoubleTrouble ? '#b45309' : '#000' }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: { xs: '0.78rem', sm: '0.85rem' }, color: useDoubleTrouble ? '#b45309' : '#000' }}>
                     Double Trouble
                   </Typography>
                   {useDoubleTrouble && (
@@ -1311,7 +1333,7 @@ const Prediction = () => {
           </Box>
 
           {/* Action buttons */}
-          <Box sx={{ display: 'flex', gap: 1.5, px: 3, pb: 3 }}>
+          <Box sx={{ display: 'flex', gap: 1.5, px: 2.5, pb: 2.5 }}>
             <Box
               onClick={() => setShowPreview(false)}
               sx={{

@@ -63,6 +63,13 @@ interface ComputedStats {
 const getInitials = (name: string) =>
   name ? name.trim().split(/\s+/).map((w) => w[0]).join('').toUpperCase().slice(0, 2) : '?';
 
+const nameFromEmail = (email?: string | null) => {
+  if (!email) return null;
+  const local = email.split('@')[0];
+  const parts = local.replace(/[_\.]+/g, ' ').split(/\s+/).filter(Boolean);
+  const capitalized = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  return capitalized || null;
+};
 const MEDAL: Record<number, { icon: string; color: string; glow: string }> = {
   1: { icon: '🥇', color: '#f59e0b', glow: 'rgba(245,158,11,0.35)' },
   2: { icon: '🥈', color: '#9ca3af', glow: 'rgba(156,163,175,0.25)' },
@@ -100,7 +107,23 @@ const Leaderboard = () => {
       ]);
 
       if (lbRes.error) { setError(lbRes.error.message); setLoading(false); return; }
-      const lbRows = (lbRes.data ?? []) as LeaderboardRow[];
+      let lbRows = (lbRes.data ?? []) as LeaderboardRow[];
+
+      // Normalise display_name: prefer profiles, then derive from email, for any row with missing/email-like name
+      const isEmailLike = (s?: string | null) => !!s && /\S+@\S+\.\S+/.test(s);
+      const needsName = lbRows.filter(r => !r.display_name || isEmailLike(r.display_name));
+      const missingIds = needsName.map(r => r.user_id);
+      const profMap: Record<string, string> = {};
+      if (missingIds.length > 0) {
+        const { data: profs } = await supabase.from('profiles').select('id, display_name').in('id', missingIds);
+        for (const p of profs ?? []) if (p.display_name) profMap[p.id] = p.display_name;
+      }
+      lbRows = lbRows.map(r => ({
+        ...r,
+        display_name: (!r.display_name || isEmailLike(r.display_name))
+          ? (profMap[r.user_id] || nameFromEmail(r.email) || r.user_id)
+          : r.display_name,
+      }));
       setRows(lbRows);
 
       // Build stats map
@@ -399,10 +422,10 @@ const Leaderboard = () => {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: '44px 1fr 52px 62px 72px 28px',
+                gridTemplateColumns: '40px 1fr 48px 58px 68px',
                 alignItems: 'center',
                 px: 2,
-                py: 1.1,
+                py: 1.5,
                 background: '#000',
                 borderBottom: '1px solid rgba(0,0,0,0.07)',
               }}
@@ -413,14 +436,13 @@ const Leaderboard = () => {
                 { label: 'DT', align: 'center' },
                 { label: 'Streak', align: 'center' },
                 { label: 'Points', align: 'right' },
-                { label: '', align: 'center' },
               ].map(({ label, align }) => (
                 <Typography
                   key={label}
                   sx={{
                     fontWeight: 800,
                     fontSize: '0.58rem',
-                    color: 'rgba(255,255,255,0.6)',
+                    color: 'rgba(255,255,255,0.9)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.1em',
                     textAlign: align as 'center' | 'left' | 'right',
@@ -452,10 +474,10 @@ const Leaderboard = () => {
                     onClick={() => handleToggleRow(row.user_id)}
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: '44px 1fr 52px 62px 72px 28px',
+                      gridTemplateColumns: '40px 1fr 48px 58px 68px',
                       alignItems: 'center',
-                      px: 2,
-                      py: 1.4,
+                      px: 0.5,
+                      py: 1.5,
                       borderBottom: isExpanded ? 'none' : isLast ? 'none' : '1px solid rgba(255,255,255,0.06)',
                       background: isExpanded ? 'rgba(255,255,255,0.05)' : '#111',
                       cursor: 'pointer',
@@ -564,31 +586,6 @@ const Leaderboard = () => {
 
                     </Box>
 
-                    {/* Chevron */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Box
-                        sx={{
-                          width: 20, height: 20, borderRadius: '6px',
-                          background: isExpanded ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
-                          border: '1px solid rgba(255,255,255,0.15)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          transition: 'background 0.15s',
-                        }}
-                      >
-                        <Typography
-                          sx={{
-                            fontSize: '0.6rem',
-                            color: isExpanded ? '#fff' : 'rgba(255,255,255,0.4)',
-                            lineHeight: 1,
-                            transition: 'transform 0.2s, color 0.15s',
-                            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                            display: 'block',
-                          }}
-                        >
-                          ▾
-                        </Typography>
-                      </Box>
-                    </Box>
                   </Box>
 
                   {/* ── Accordion: vertical match list ── */}

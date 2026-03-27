@@ -286,6 +286,7 @@ const Leaderboard = () => {
   };
 
   const myRow = sorted.find((r) => r.user_id === session?.user?.id);
+  const myRank = myRow ? sorted.findIndex(r => r.user_id === session?.user?.id) + 1 : null;
   const visible = showAll ? sorted : sorted.slice(0, PAGE_SIZE);
 
   const streakLabel = (streak: number, fiferCount: number) => {
@@ -357,7 +358,7 @@ const Leaderboard = () => {
       )}
 
       {/* ── My rank pill (if outside top 3) ─────────────── */}
-      {!loading && !error && myRow && myRow.rank > 3 && (
+      {!loading && !error && myRow && myRank !== null && myRank > 3 && (
         <Container maxWidth="md" sx={{ px: { xs: 1.5, sm: 2 } }}>
           <Box
             sx={{
@@ -394,10 +395,10 @@ const Leaderboard = () => {
             </Box>
             <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
               <Typography sx={{ fontWeight: 900, fontSize: '1.1rem', color: '#fff', lineHeight: 1 }}>
-                #{myRow.rank}
+                #{myRank}
               </Typography>
               <Typography sx={{ fontWeight: 700, fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)' }}>
-                {myRow.total_points} pts
+                {myRow.total_points + (statsMap[myRow.user_id]?.fiferCount ?? 0) * 100 - (statsMap[myRow.user_id]?.missedPenalty ?? 0)} pts
               </Typography>
             </Box>
           </Box>
@@ -456,7 +457,8 @@ const Leaderboard = () => {
             {/* Rows */}
             {visible.map((row, idx) => {
               const isMe = row.user_id === session?.user?.id;
-              const medal = MEDAL[row.rank];
+              const displayRank = sorted.findIndex(r => r.user_id === row.user_id) + 1;
+              const medal = MEDAL[displayRank];
               const stats = statsMap[row.user_id];
               const fiferBonus = (stats?.fiferCount ?? 0) * 100;
               const missedPenalty = stats?.missedPenalty ?? 0;
@@ -504,7 +506,7 @@ const Leaderboard = () => {
                         </Typography>
                       ) : (
                         <Typography sx={{ fontWeight: 800, fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>
-                          {row.rank}
+                          {displayRank}
                         </Typography>
                       )}
                     </Box>

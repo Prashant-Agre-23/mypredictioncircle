@@ -253,7 +253,7 @@ const MyPredictions = () => {
 
   const calcPoints = (pred: EnrichedPrediction, ca: CorrectAnswer | null, matchNumber: number): number | null => {
     if (!ca) return null;
-    if (ca.is_washout) return 0;  // washout: everyone gets 0, no penalty
+    if (ca.is_washout) return 0;  // washout: 0 pts for all; DT is consumed but no penalty
     const { winner: wPts, player: pPts } = stagePoints(matchNumber);
     const wCorrect = !!ca.winner && pred.predicted_winner === ca.winner;
     const bCorrect = !!ca.batter_id && Number(pred.predicted_batter_id) === ca.batter_id;
@@ -421,7 +421,7 @@ const MyPredictions = () => {
                   {isWashout ? (
                     <>
                       <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', lineHeight: 1.1, color: '#94a3b8', letterSpacing: '-0.01em' }}>🌧 Washout</Typography>
-                      <Typography sx={{ fontSize: '0.58rem', fontWeight: 700, color: 'rgba(255,255,255,0.3)', mt: 0.25 }}>Match abandoned · 0 pts for all</Typography>
+                      <Typography sx={{ fontSize: '0.58rem', fontWeight: 700, color: 'rgba(255,255,255,0.3)', mt: 0.25 }}>Match abandoned · 0 pts · DT consumed if used</Typography>
                     </>
                   ) : (
                     <>
@@ -466,7 +466,7 @@ const MyPredictions = () => {
               {isWashout && isDT && (
                 <Box sx={{ display: 'flex', gap: 0.6 }}>
                   <Box sx={{ px: 1, py: 0.35, borderRadius: '8px', background: 'rgba(251,191,36,0.12)', border: '1px solid rgba(251,191,36,0.2)' }}>
-                    <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: '#fbbf24' }}>⚡ DT used · no penalty</Typography>
+                    <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: '#fbbf24' }}>⚡ DT consumed · not returned</Typography>
                   </Box>
                 </Box>
               )}

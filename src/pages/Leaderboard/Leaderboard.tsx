@@ -165,11 +165,14 @@ const Leaderboard = () => {
           // If washout: streak is unaffected (neither increment nor reset)
           if (isWashout) {
             washoutMatchIds.add(ca.match_id);
-            // If user also missed this washout match → still gets penalty
             const p = userPredMap.get(ca.match_id);
             if (!p) {
+              // Missed a washout match → still gets penalty
               missedMatchIds.add(ca.match_id);
               missedPenalty += stagePoints(ca.match_number ?? 0);
+            } else if (p.is_double_trouble) {
+              // DT was used on a washout — counts as consumed
+              dtCount++;
             }
             matchStreaks[ca.match_id] = { streakAtMatch: streak, fiferJustEarned: false, winnerCorrect: null };
             continue;

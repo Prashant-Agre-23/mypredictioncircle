@@ -281,6 +281,32 @@ const Prediction = () => {
   const playerName = (id: string | number | null) =>
     players.find((p) => Number(p.id) === Number(id))?.name ?? String(id);
 
+  // ── Refresh DT count for the stage (used on load + after save) ────────────
+  const refreshDtCount = async (currentMatchId: string | number, matchNumber: number) => {
+    if (!session?.user?.id) return;
+    const mn = matchNumber;
+    const stage_from = mn <= 35 ? 1 : mn <= 70 ? 36 : 71;
+    const stage_to   = mn <= 35 ? 35 : mn <= 70 ? 70 : 74;
+
+    const { data: stageMatches } = await supabase
+      .from('matches')
+      .select('id')
+      .gte('match_number', stage_from)
+      .lte('match_number', stage_to)
+      .neq('id', currentMatchId);
+
+    const stageMatchIds = (stageMatches ?? []).map((m: { id: number }) => m.id);
+    if (stageMatchIds.length === 0) { setDtUsedInStage(0); return; }
+
+    const { data: dtData } = await supabase
+      .from('predictions')
+      .select('match_id')
+      .eq('user_id', session.user.id)
+      .eq('is_double_trouble', true)
+      .in('match_id', stageMatchIds);
+    setDtUsedInStage((dtData ?? []).length);
+  };
+
   // ── Save / Update to Supabase (upsert = one entry per user per match) ─────
   const handleSave = async () => {
     if (!match || !session) return;
@@ -314,6 +340,8 @@ const Prediction = () => {
       setIsEditing(false);
       setShowPreview(false);
       setToast({ open: true, message: wasEditing ? 'Prediction updated successfully!' : 'Prediction saved successfully!' });
+      // Refresh DT count so the toggle reflects the saved state (including washout matches)
+      if (match) refreshDtCount(match.id, match.match_number);
     } else {
       alert(`Error saving: ${error.message}`);
     }
@@ -377,23 +405,9 @@ const Prediction = () => {
           setUseDoubleTrouble(dtVal);
         }
 
-        // Count DT used in this stage (excluding current match so we don't double-count)
+        // Count DT used in this stage via the shared helper
         if (matchData?.match_number) {
-          const { stage_from, stage_to } = (() => {
-            const mn = matchData.match_number;
-            if (mn <= 35) return { stage_from: 1, stage_to: 35 };
-            if (mn <= 70) return { stage_from: 36, stage_to: 70 };
-            return { stage_from: 71, stage_to: 74 };
-          })();
-          const { data: dtData } = await supabase
-            .from('predictions')
-            .select('match_number, is_double_trouble')
-            .eq('user_id', session.user.id)
-            .eq('is_double_trouble', true)
-            .gte('match_number', stage_from)
-            .lte('match_number', stage_to)
-            .neq('match_id', matchData.id);
-          setDtUsedInStage((dtData ?? []).length);
+          await refreshDtCount(matchData.id, matchData.match_number);
         }
       }
 
@@ -418,7 +432,7 @@ const Prediction = () => {
     };
 
     if (matchId) fetchData();
-  }, [matchId]);
+  }, [matchId, session?.user?.id]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 

@@ -310,6 +310,12 @@ const Prediction = () => {
   // ── Save / Update to Supabase (upsert = one entry per user per match) ─────
   const handleSave = async () => {
     if (!match || !session) return;
+    // Re-check lock at save time — match may have started while the dialog was open
+    if (isMatchStarted(match)) {
+      setShowPreview(false);
+      setToast({ open: true, message: 'Predictions are closed — match has already started.' });
+      return;
+    }
     setSaving(true);
     const payload = {
       match_id: match.id,
@@ -1365,22 +1371,22 @@ const Prediction = () => {
               <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#000' }}>Edit</Typography>
             </Box>
             <Box
-              onClick={saving ? undefined : handleSave}
+              onClick={(saving || matchLocked) ? undefined : handleSave}
               sx={{
                 flex: 2,
                 py: 1.4,
                 borderRadius: '14px',
-                background: saving ? 'rgba(0,0,0,0.4)' : '#000',
+                background: (saving || matchLocked) ? 'rgba(0,0,0,0.35)' : '#000',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: saving ? 'not-allowed' : 'pointer',
+                cursor: (saving || matchLocked) ? 'not-allowed' : 'pointer',
                 transition: 'background 0.2s ease',
-                '&:hover': saving ? {} : { background: '#222' },
+                '&:hover': (saving || matchLocked) ? {} : { background: '#222' },
               }}
             >
-              <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#fff' }}>
-                {saving ? 'Saving…' : 'Confirm & Save'}
+              <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: (saving || matchLocked) ? 'rgba(255,255,255,0.5)' : '#fff' }}>
+                {saving ? 'Saving…' : matchLocked ? 'Predictions Closed' : 'Confirm & Save'}
               </Typography>
             </Box>
           </Box>

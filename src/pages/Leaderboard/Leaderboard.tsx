@@ -233,6 +233,27 @@ const Leaderboard = () => {
     });
   }, [rows, statsMap]);
 
+  // Competition ranking: same effective points → same rank; next rank skips (1,1,3,4,4,6…)
+  const rankMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    let rank = 1;
+    for (let i = 0; i < sorted.length; i++) {
+      const effectivePoints = (pts: typeof sorted[0]) =>
+        pts.total_points + (statsMap[pts.user_id]?.fiferCount ?? 0) * 100 - (statsMap[pts.user_id]?.missedPenalty ?? 0);
+      if (i === 0) {
+        map[sorted[i].user_id] = 1;
+      } else {
+        if (effectivePoints(sorted[i]) === effectivePoints(sorted[i - 1])) {
+          map[sorted[i].user_id] = map[sorted[i - 1].user_id];
+        } else {
+          rank = i + 1;
+          map[sorted[i].user_id] = rank;
+        }
+      }
+    }
+    return map;
+  }, [sorted, statsMap]);
+
   // Fetch per-match breakdown lazily when accordion opens
   const handleToggleRow = async (userId: string) => {
     if (expandedUserId === userId) {
@@ -289,7 +310,7 @@ const Leaderboard = () => {
   };
 
   const myRow = sorted.find((r) => r.user_id === session?.user?.id);
-  const myRank = myRow ? sorted.findIndex(r => r.user_id === session?.user?.id) + 1 : null;
+  const myRank = myRow ? (rankMap[myRow.user_id] ?? null) : null;
   const visible = showAll ? sorted : sorted.slice(0, PAGE_SIZE);
 
   const streakLabel = (streak: number, fiferCount: number) => {
@@ -460,7 +481,7 @@ const Leaderboard = () => {
             {/* Rows */}
             {visible.map((row, idx) => {
               const isMe = row.user_id === session?.user?.id;
-              const displayRank = sorted.findIndex(r => r.user_id === row.user_id) + 1;
+              const displayRank = rankMap[row.user_id] ?? (sorted.findIndex(r => r.user_id === row.user_id) + 1);
               const medal = MEDAL[displayRank];
               const stats = statsMap[row.user_id];
               const fiferBonus = (stats?.fiferCount ?? 0) * 100;
@@ -652,10 +673,10 @@ const Leaderboard = () => {
                               const lower = name.toLowerCase();
                               if (lower.includes('chennai') || lower.includes('csk')) return 'CSK';
                               if (lower.includes('mumbai') || lower.includes('mi')) return 'MI';
-                              if (lower.includes('royal') || lower.includes('rcb') || lower.includes('bangalore') || lower.includes('bengaluru')) return 'RCB';
+                              if (lower.includes('rajasthan') || lower.includes('royals') || lower === 'rr' || lower.startsWith('rr ')) return 'RR';
+                              if (lower.includes('royal challengers') || lower.includes('rcb') || lower.includes('bangalore') || lower.includes('bengaluru') || lower === 'rc' || lower.startsWith('rc ')) return 'RCB';
                               if (lower.includes('kolkata') || lower.includes('kkr')) return 'KKR';
                               if (lower.includes('sunrisers') || lower.includes('srh') || lower.includes('hyderabad')) return 'SRH';
-                              if (lower.includes('rajasthan') || lower.includes('rr')) return 'RR';
                               if (lower.includes('delhi') || lower.includes('dc') || lower.includes('capitals')) return 'DC';
                               if (lower.includes('punjab') || lower.includes('pbks') || lower.includes('kings')) return 'PBKS';
                               if (lower.includes('gujarat') || lower.includes('gt') || lower.includes('titans')) return 'GT';

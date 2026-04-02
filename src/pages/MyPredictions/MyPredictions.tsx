@@ -23,6 +23,7 @@ interface Match {
   match_number: number;
   match_date: string;
   match_time: string;
+  match_start_utc?: string; // server UTC timestamp — device clock cannot affect this
   venue?: string;
   team_a?: string;
   team_b?: string;
@@ -88,8 +89,13 @@ const nameFromEmail = (email?: string | null) => {
   return capitalized || null;
 };
 
-const isMatchLocked = (match: Match): boolean =>
-  new Date() >= new Date(`${match.match_date}T${match.match_time}`);
+const isMatchLocked = (match: Match): boolean => {
+  // Use match_start_utc (server UTC) when available — device clock/timezone cannot affect this
+  const lockTime = match.match_start_utc
+    ? new Date(match.match_start_utc).getTime()
+    : new Date(`${match.match_date}T${match.match_time}`).getTime();
+  return Date.now() >= lockTime;
+};
 
 
 // ─── Table primitives ─────────────────────────────────────────────────────────
@@ -159,7 +165,7 @@ const MyPredictions = () => {
 
       const { data: matchData, error: matchError } = await supabase
         .from('matches')
-        .select('id, match_number, match_date, match_time, venue, team_a, team_b')
+        .select('id, match_number, match_date, match_time, match_start_utc, venue, team_a, team_b')
         .order('match_number', { ascending: false });
 
       if (matchError) { setLoading(false); return; }

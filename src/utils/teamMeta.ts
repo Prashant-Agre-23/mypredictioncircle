@@ -17,7 +17,7 @@ export interface TeamMeta {
 const TEAM_META: Array<{ keys: string[]; meta: TeamMeta }> = [
   { keys: ['chennai', 'csk'],                        meta: { color: '#f9c200', logo: cskLogo  } },
   { keys: ['mumbai', 'mi'],                          meta: { color: '#004c93', logo: miLogo   } },
-  { keys: ['royal challengers', 'rcb', 'bangalore', 'bengaluru'], meta: { color: '#c8102e', logo: rcbLogo  } },
+  { keys: ['royal challengers', 'rcb', 'rc bangalore', 'rc bengaluru', 'bangalore', 'bengaluru'], meta: { color: '#c8102e', logo: rcbLogo  } },
   { keys: ['kolkata', 'kkr'],                        meta: { color: '#3a225d', logo: kkrLogo  } },
   { keys: ['sunrisers', 'srh', 'hyderabad'],         meta: { color: '#f26522', logo: srhLogo  } },
   { keys: ['rajasthan', 'rr', 'royals'],             meta: { color: '#eb83b5', logo: rrLogo   } },

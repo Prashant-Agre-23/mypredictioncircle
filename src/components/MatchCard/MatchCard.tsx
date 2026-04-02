@@ -16,10 +16,19 @@ export interface Match {
   venue?: string;
 }
 
+export interface UserPrediction {
+  predicted_winner: string | null;
+  predicted_batter_name: string | null;
+  predicted_bowler_name: string | null;
+  predicted_mom_name: string | null;
+  is_double_trouble: boolean;
+}
+
 interface MatchCardProps {
   match: Match;
   isActive: boolean;
   hasPrediction?: boolean;
+  userPrediction?: UserPrediction | null;
 }
 
 const formatDate = (dateStr: string) =>
@@ -45,7 +54,7 @@ const abbr = (name: string) => {
 
 
 
-const MatchCard = ({ match, isActive, hasPrediction = false }: MatchCardProps) => {
+const MatchCard = ({ match, isActive, hasPrediction = false, userPrediction = null }: MatchCardProps) => {
   const isLive = isActive;
   const navigate = useNavigate();
   const metaA = match.team_a ? getTeamMeta(match.team_a) : { color: '#1a1a2e', logo: '' };
@@ -66,6 +75,134 @@ const MatchCard = ({ match, isActive, hasPrediction = false }: MatchCardProps) =
   };
 
   return (
+    <Box>
+      {/* ── Your Pick banner — mobile only (desktop handled in Dashboard) ── */}
+      {isLive && hasPrediction && userPrediction && (
+        <Box
+          sx={{
+            mb: 1,
+            mx: 0.5,
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, #0f0f0f 0%, #2a2a2a 100%)',
+            boxShadow: '0 4px 18px rgba(0,0,0,0.22)',
+            overflow: 'hidden',
+            position: 'relative',
+            display: { xs: 'block', sm: 'none' },
+          }}
+        >
+          {/* Subtle left accent stripe */}
+          <Box sx={{
+            position: 'absolute', left: 0, top: 0, bottom: 0, width: 4,
+            background: 'linear-gradient(180deg, #4ade80 0%, #22d3ee 100%)',
+          }} />
+
+          {/* Header row */}
+          <Box sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            px: 2, pt: 1.1, pb: 0.6, pl: 2.5,
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
+              <Box sx={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: 'linear-gradient(135deg, #4ade80, #22d3ee)',
+                boxShadow: '0 0 6px #4ade8088',
+              }} />
+              <Typography sx={{
+                fontSize: '0.65rem', fontWeight: 900, color: 'rgba(255,255,255,0.55)',
+                letterSpacing: '0.12em', textTransform: 'uppercase',
+              }}>
+                Your Pick
+              </Typography>
+            </Box>
+            {userPrediction.is_double_trouble && (
+              <Box sx={{
+                background: 'linear-gradient(90deg, #f59e0b, #ef4444)',
+                borderRadius: '6px', px: 0.8, py: 0.2,
+                display: 'flex', alignItems: 'center', gap: 0.4,
+              }}>
+                <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: '#fff', letterSpacing: '0.06em' }}>
+                  ⚡ DOUBLE TROUBLE
+                </Typography>
+              </Box>
+            )}
+          </Box>
+
+          {/* Pick rows */}
+          <Box sx={{ px: 1.5, pb: 0.8, pl: 2.5, display: 'flex', flexDirection: 'column', gap: 0.35 }}>
+            {[
+              {
+                label: 'Winner',
+                value: userPrediction.predicted_winner,
+                logo: userPrediction.predicted_winner ? getTeamMeta(userPrediction.predicted_winner).logo : null,
+                color: getTeamMeta(userPrediction.predicted_winner ?? '').color,
+              },
+              { label: 'Top Batter', value: userPrediction.predicted_batter_name,  logo: null, color: null },
+              { label: 'Top Bowler', value: userPrediction.predicted_bowler_name,  logo: null, color: null },
+              { label: 'Player of the Match', value: userPrediction.predicted_mom_name, logo: null, color: null },
+            ].map(({ label, value, logo, color }) => (
+              <Box
+                key={label}
+                sx={{ display: 'flex', alignItems: 'center', gap: 0.9 }}
+              >
+                {/* Icon */}
+                {logo ? (
+                  <Box sx={{
+                    width: 18, height: 18, borderRadius: '5px', flexShrink: 0,
+                    background: color || '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden', p: '2px',
+                    boxShadow: color ? `0 2px 6px ${color}66` : 'none',
+                  }}>
+                    <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  </Box>
+                ) : (
+                  <Box sx={{
+                    width: 4, height: 4, borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.2)', flexShrink: 0,
+                  }} />
+                )}
+                {/* Label */}
+                <Typography sx={{
+                  fontSize: '0.6rem', fontWeight: 700,
+                  color: 'rgba(255,255,255,0.75)', letterSpacing: '0.04em',
+                  minWidth: 96, flexShrink: 0,
+                }}>
+                  {label}
+                </Typography>
+                {/* Dotted separator */}
+                <Box sx={{
+                  flex: 1, height: '1px',
+                  backgroundImage: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.12) 0, rgba(255,255,255,0.12) 3px, transparent 3px, transparent 7px)',
+                }} />
+                {/* Value */}
+                <Typography sx={{
+                  fontSize: '0.72rem', fontWeight: 800, color: '#fff',
+                  letterSpacing: '0.01em', textAlign: 'right',
+                  maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {value || '—'}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+
+          {/* Editable hint */}
+          <Box sx={{
+            mx: 1.5, mb: 1, ml: 2.5,
+            borderRadius: '8px',
+            background: 'rgba(74,222,128,0.1)',
+            border: '1px solid rgba(74,222,128,0.25)',
+            px: 1, py: 0.55,
+            display: 'flex', alignItems: 'center', gap: 0.6,
+          }}>
+            <Typography sx={{ fontSize: '0.65rem' }}>✏️</Typography>
+            <Typography sx={{ fontSize: '0.62rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 }}>
+              You can change your prediction before the match starts
+            </Typography>
+          </Box>
+        </Box>
+      )}
+
     <Paper
       elevation={0}
       onClick={handleCardClick}
@@ -404,36 +541,43 @@ const MatchCard = ({ match, isActive, hasPrediction = false }: MatchCardProps) =
           mx: 2,
           mb: 2,
           borderRadius: '14px',
-          background: isLive
-            ? hasPrediction ? '#1b4332' : '#000'
-            : 'rgba(0,0,0,0.04)',
-          py: 1,
+          background: isLive ? '#000' : 'rgba(0,0,0,0.04)',
+          py: isLive && !hasPrediction ? 0.85 : 1,
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 0.6,
+          gap: 0.25,
           cursor: isLive ? 'pointer' : 'default',
           transition: 'background 0.18s ease, transform 0.15s ease',
-          '&:hover': isLive ? { background: hasPrediction ? '#2d6a4f' : '#222', transform: 'scale(1.01)' } : {},
+          '&:hover': isLive ? { background: '#222', transform: 'scale(1.01)' } : {},
         }}
       >
-        {isLive && hasPrediction && (
-          <Typography sx={{ fontSize: '0.78rem' }}>✅</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+          {isLive && hasPrediction && (
+            <Typography sx={{ fontSize: '0.78rem' }}>✅</Typography>
+          )}
+          <Typography
+            sx={{
+              fontSize: '0.78rem',
+              fontWeight: 800,
+              letterSpacing: '0.03em',
+              color: isLive ? '#fff' : 'rgba(0,0,0,0.28)',
+            }}
+          >
+            {isLive
+              ? hasPrediction ? 'Edit Prediction  ✏️' : 'Make Your Prediction  →'
+              : 'Prediction Opens Soon'}
+          </Typography>
+        </Box>
+        {isLive && !hasPrediction && (
+          <Typography sx={{ fontSize: '0.6rem', fontWeight: 500, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.01em' }}>
+            Pick winner · batter · bowler · player of the match
+          </Typography>
         )}
-        <Typography
-          sx={{
-            fontSize: '0.78rem',
-            fontWeight: 800,
-            letterSpacing: '0.03em',
-            color: isLive ? '#fff' : 'rgba(0,0,0,0.28)',
-          }}
-        >
-          {isLive
-            ? hasPrediction ? 'Predicted · Edit  ✏️' : 'Make Prediction  →'
-            : 'Prediction Opens Soon'}
-        </Typography>
       </Box>
     </Paper>
+    </Box>
   );
 };
 

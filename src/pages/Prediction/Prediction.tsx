@@ -30,6 +30,7 @@ interface MatchDetail {
   match_number: number;
   match_date: string;
   match_time: string;
+  match_start_utc: string; // server-stored UTC timestamp — device clock/timezone cannot affect this
   venue?: string;
   team_a?: string;
   team_b?: string;
@@ -182,6 +183,12 @@ const Prediction = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>('winner');
 
+  // ── Server time offset ────────────────────────────────────────────────────
+  // Fetched once on mount. serverNow() = Date.now() + offset.
+  // This makes ALL lock checks immune to device clock / timezone manipulation.
+  const [serverTimeOffset, setServerTimeOffset] = useState<number>(0);
+  const serverNow = () => Date.now() + serverTimeOffset;
+
   // Selections: one per tab
   const [selections, setSelections] = useState<Record<TabKey, string | number | null>>({
     winner: null,
@@ -199,15 +206,31 @@ const Prediction = () => {
   const [correctAnswer, setCorrectAnswer] = useState<CorrectAnswer | null>(null);
   const [notAccessible, setNotAccessible] = useState(false); // match too far in future
 
+  // ── Fetch server time once on mount to guard against device clock tampering ──
+  useEffect(() => {
+    const fetchServerTime = async () => {
+      const { data } = await supabase.rpc('get_server_time');
+      if (data) {
+        const serverMs = new Date(data as string).getTime();
+        setServerTimeOffset(serverMs - Date.now());
+      }
+    };
+    fetchServerTime();
+  }, []);
+
   // ── Countdown timer ────────────────────────────────────────────────────────
   const [countdown, setCountdown] = useState<string | null>(null);
 
   useEffect(() => {
     if (!match) return;
-    const matchDateTime = new Date(`${match.match_date}T${match.match_time}`);
+    // Use match_start_utc — server UTC timestamp, unaffected by device clock or timezone
+    // NULL guard: fall back to match_date+match_time if column not yet populated
+    const matchDateTime = match.match_start_utc
+      ? new Date(match.match_start_utc)
+      : new Date(`${match.match_date}T${match.match_time}`);
 
     const tick = () => {
-      const diff = matchDateTime.getTime() - Date.now();
+      const diff = matchDateTime.getTime() - serverNow();
       if (diff <= 0) {
         setCountdown(null); // match started
         return;
@@ -269,11 +292,13 @@ const Prediction = () => {
     return () => { mounted = false; };
   }, [session?.user?.id]);
 
-  // ── Match lock: true once match start time has passed ─────────────────────
+  // ── Match lock: uses serverNow() — immune to device clock/timezone manipulation ──
   const isMatchStarted = (m: MatchDetail | null): boolean => {
     if (!m) return false;
-    const matchDateTime = new Date(`${m.match_date}T${m.match_time}`);
-    return new Date() >= matchDateTime;
+    const lockTime = m.match_start_utc
+      ? new Date(m.match_start_utc).getTime()
+      : new Date(`${m.match_date}T${m.match_time}`).getTime();
+    return serverNow() >= lockTime;  // serverNow() = Date.now() + server offset
   };
   const matchLocked = isMatchStarted(match);
 
@@ -310,7 +335,7 @@ const Prediction = () => {
   // ── Save / Update to Supabase (upsert = one entry per user per match) ─────
   const handleSave = async () => {
     if (!match || !session) return;
-    // Re-check lock at save time — match may have started while the dialog was open
+    // Re-check lock at save time using server UTC — device clock cannot bypass this
     if (isMatchStarted(match)) {
       setShowPreview(false);
       setToast({ open: true, message: 'Predictions are closed — match has already started.' });
@@ -362,17 +387,19 @@ const Prediction = () => {
       // Fetch match details
       const { data: matchData } = await supabase
         .from('matches')
-        .select('id, match_number, match_date, match_time, venue, team_a, team_b')
+        .select('id, match_number, match_date, match_time, match_start_utc, venue, team_a, team_b')
         .eq('id', matchId)
         .single();
 
       if (matchData) setMatch(matchData as MatchDetail);
 
       // ── Access gate: only allow if match starts within next 24h or has already started ──
+      // Uses match_start_utc (server UTC) — device timezone/clock cannot affect this
       if (matchData) {
-        const matchDateTime = new Date(`${matchData.match_date}T${matchData.match_time}`);
-        const now = new Date();
-        const diffHours = (matchDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+        const matchStartMs = matchData.match_start_utc
+          ? new Date(matchData.match_start_utc).getTime()
+          : new Date(`${matchData.match_date}T${matchData.match_time}`).getTime();
+        const diffHours = (matchStartMs - serverNow()) / (1000 * 60 * 60);
         // diffHours < 0 → already started; 0–24 → prediction window open; > 24 → too early
         if (diffHours > 24) {
           setNotAccessible(true);

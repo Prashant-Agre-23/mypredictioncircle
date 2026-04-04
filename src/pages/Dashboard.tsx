@@ -45,7 +45,7 @@ const Dashboard: React.FC = () => {
         .from('matches')
         .select('id, match_number, match_date, match_time, venue, team_a, team_b')
         .order('match_number', { ascending: true })
-        .limit(10);
+        .limit(74);
 
       if (error) {
         console.error('Error fetching matches:', error);

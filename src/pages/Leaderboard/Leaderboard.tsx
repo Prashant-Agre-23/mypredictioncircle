@@ -5,6 +5,7 @@ import Navbar from '../../components/Navbar/Navbar';
 import { supabase } from '../../config/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { getTeamMeta } from '../../utils/teamMeta';
+import { getRandomDialogue } from '../../utils/loadingDialogues';
 
 interface LeaderboardRow {
   rank: number;
@@ -60,13 +61,40 @@ interface ComputedStats {
   missedPenalty: number;        // total penalty points for missed predictions
 }
 
+interface TodayMatchRow {
+  id: number;
+  match_date: string;
+}
+
+interface TodayPointsRow {
+  user_id: string;
+  match_id: number;
+  points: number | null;
+}
+
+interface TodayTopUser {
+  user_id: string;
+  display_name: string;
+  today_points: number;
+}
+
+interface TodayMatchResult {
+  matchId: number;
+  matchNumber: number;
+  teamA: string;
+  teamB: string;
+  winner: string | null;
+  loser: string | null;
+  isWashout: boolean;
+}
+
 const getInitials = (name: string) =>
   name ? name.trim().split(/\s+/).map((w) => w[0]).join('').toUpperCase().slice(0, 2) : '?';
 
 const nameFromEmail = (email?: string | null) => {
   if (!email) return null;
   const local = email.split('@')[0];
-  const parts = local.replace(/[_\.]+/g, ' ').split(/\s+/).filter(Boolean);
+  const parts = local.replace(/[_.]+/g, ' ').split(/\s+/).filter(Boolean);
   const capitalized = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
   return capitalized || null;
 };
@@ -74,6 +102,164 @@ const MEDAL: Record<number, { icon: string; color: string; glow: string }> = {
   1: { icon: '🥇', color: '#f59e0b', glow: 'rgba(245,158,11,0.35)' },
   2: { icon: '🥈', color: '#9ca3af', glow: 'rgba(156,163,175,0.25)' },
   3: { icon: '🥉', color: '#cd7f32', glow: 'rgba(205,127,50,0.25)' },
+};
+
+// ── Match commentary generator ──────────────────────────────────────────────
+// Returns a short, funny, cricket-flavoured sentence about the day's result.
+const getMatchCommentary = (results: TodayMatchResult[]): string => {
+  if (results.length === 0) return '';
+
+  // Each entry: keywords to match against loser name, plus joke lines.
+  // {w} = winner name, {l} = loser name
+  const teamJokes: Array<{ keys: string[]; lines: string[] }> = [
+    {
+      keys: ['kolkata', 'kkr'],
+      lines: [
+        '{w} walked into Eden Gardens and just… took it. KKR were guests at their own party 🏟️😶',
+        "KKR's batting collapsed so fast, even their fans couldn't process it in time ⚡📉",
+        "{w} made KKR look like they were playing their first ever game of cricket 🏏😬",
+        "KKR bowled, batted, and still lost — {w} didn't even break a sweat 💅",
+        'Eden Gardens went dead silent when {w} finished the job. The pigeons left too 🕊️',
+      ],
+    },
+    {
+      keys: ['chennai', 'csk'],
+      lines: [
+        "{w} silenced the yellow army today. Even Thala's whistle couldn't save them 🦁📢",
+        'CSK tried the vintage comeback script — {w} had not read it ✂️📜',
+        '{w} cooked CSK in their own yellow kitchen. The vada pav was cold by the end 🍛',
+        'CSK played their hearts out, but {w} played better cricket. Simple as that 🏏',
+        'Dhoni watched. {w} won. MS said nothing — his face said it all 😐🏆',
+      ],
+    },
+    {
+      keys: ['royal challengers', 'rcb', 'bangalore', 'bengaluru'],
+      lines: [
+        '{w} handed RCB a reality check. Bengaluru fans stress-refreshing the scorecard 😭📲',
+        'RCB: "This is our year." {w}: "Absolutely not." 👋',
+        'Another RCB heartbreak for the scrapbook — {w} added a fresh page 📖',
+        "{w} did what RCB's batting couldn't — actually finish the job 🏏✅",
+        'RCB brought the atmosphere, the jerseys, the fans. {w} brought the runs 🏆',
+      ],
+    },
+    {
+      keys: ['mumbai', 'mi'],
+      lines: [
+        '{w} visited Wankhede and left with all the points. MI left with nothing 🌊',
+        "MI's famous second-half comeback? {w} shredded it in the first 10 overs ✋",
+        "{w} reminded MI that past trophies don't actually bat for you 🏆➡️🗑️",
+        'Mumbai went full throttle — in reverse — and {w} capitalized beautifully 🚗💨',
+        '{w} proved MI fans right about one thing: it is not always their year 😅',
+      ],
+    },
+    {
+      keys: ['sunrisers', 'srh', 'hyderabad'],
+      lines: [
+        '{w} ran through SRH like a spicy Hyderabadi biryani — fast, fiery, no survivors 🌶️',
+        "SRH forgot to inform their batting order there was a match today — {w} noticed 👀",
+        "{w} torched SRH and we're definitely talking about the cricket 🔥",
+        'SRH wore orange but batted in invisible ink. {w} read it perfectly 🍚',
+        'SRH had the colours of fire. {w} had actual fire 🔥🏆',
+      ],
+    },
+    {
+      keys: ['rajasthan', 'rr', 'royals'],
+      lines: [
+        '{w} proved fairytales have plot twists — and RR got the bad ending 🏰👹',
+        "RR's royal chase fell apart like a sandcastle at high tide ⛳🌊",
+        'Rajasthan Royals today? More like Rajasthan Reluctant Participants 😂',
+        '{w} had RR crying into their pink jerseys by the 15th over 💗😢',
+        "RR batted like they were protecting a 400 target. They weren't. {w} cruised 🚀",
+      ],
+    },
+    {
+      keys: ['delhi', 'dc', 'capitals'],
+      lines: [
+        '{w} stormed the capital and DC had zero defence plan whatsoever 🏛️💥',
+        'Delhi Capitals: great city, absolutely leaky batting order — {w} drove straight through 🚦',
+        '{w} swept Delhi quicker than a Monday morning Uber clears the lanes 🚖',
+        'DC showed up. {w} showed up AND played cricket. Big difference 🏏',
+        "Delhi added 'lost to {w}' to the city's long list of things that didn't go to plan 🗿",
+      ],
+    },
+    {
+      keys: ['punjab', 'pbks', 'kings'],
+      lines: [
+        "{w} put Punjab Kings out of their misery before the powerplay ended 😮‍💨",
+        '{w} said "Not today" and PBKS had no answer to that 🦁🚫',
+        "Punjab couldn't buy a wicket, a boundary, or a win today. {w} took all three 🏏💸",
+        '{w} chopped through PBKS like a Dhaba chef through Sunday prep 🍽️',
+        "PBKS fans are still waiting for the year it all clicks. {w} made sure it's not today 😄",
+      ],
+    },
+    {
+      keys: ['gujarat', 'gt', 'titans'],
+      lines: [
+        '{w} grounded the Titans. Even the heavens shrugged at Gujarat today ⚡🏟️',
+        'Gujarat Titans lost the plot — {w} wrote a much better one 📖',
+        '{w} dismantled GT faster than assembling a flatpack shelf 🔧',
+        'Titans? More like Titanics today. {w} was the iceberg 🚢🌊',
+        'GT came in confident. They left quietly. {w} made sure of that 🤫',
+      ],
+    },
+    {
+      keys: ['lucknow', 'lsg', 'super giants', 'supergiants'],
+      lines: [
+        '{w} dominated LSG so thoroughly, Lucknow forgot it had a team in this tournament 🏟️😶',
+        "LSG's 'Super Giants' nickname took some serious damage from {w} today 🦸‍♂️➡️🤡",
+        '{w} treated the LSG game like a warm-up session. LSG did not enjoy that 💪',
+        '{w} brought a full batting lineup and used every bit of it against LSG 🔫',
+        'Lucknow Super Giants: super in name only today — {w} made that very clear ✍️',
+      ],
+    },
+  ];
+
+  const fallbackLines = (winner: string, loser: string) => [
+    `${winner} absolutely dismantled ${loser} today. Zero contest, full domination 🏆`,
+    `${loser} tried hard. ${winner} tried harder — and the scoreboard showed it 🏏`,
+    `${winner} left ${loser} with nothing but a polite round of applause 👏`,
+    `${loser} had their chances. ${winner} had more — and took every single one 💪`,
+    `${winner} made it look easy against ${loser}. Textbook stuff 😎`,
+  ];
+
+  const washoutLines = (teamA: string, teamB: string) => [
+    `${teamA} vs ${teamB} — rain played hero today. Duckworth-Lewis says hi 🌧️`,
+    `Weather cancelled ${teamA} vs ${teamB}. At least someone's batting average stayed intact ☔`,
+    `Even the clouds didn't fancy watching ${teamA} vs ${teamB} today 🌧️😅`,
+    `${teamA} vs ${teamB} washed out. The only winner today was the groundsman 💧`,
+  ];
+
+  const noResultLines = (teamA: string, teamB: string) => [
+    `${teamA} vs ${teamB} is live today — predictions in, fingers crossed! 🍿`,
+    `${teamA} and ${teamB} are going head-to-head right now 🏏 Who ya got?`,
+    `Today's clash: ${teamA} 🆚 ${teamB} — it's all on the line!`,
+  ];
+
+  const seeded = (arr: string[], seed: number) => arr[Math.abs(seed) % arr.length];
+
+  const graded = results.filter(r => !r.isWashout && r.winner !== null);
+  const washouts = results.filter(r => r.isWashout);
+  const lines: string[] = [];
+
+  if (graded.length > 0) {
+    const r = graded[0];
+    const winner = r.winner!;
+    const loser = r.loser || (r.teamA.toLowerCase() === winner.toLowerCase() ? r.teamB : r.teamA);
+    const loserLower = loser.toLowerCase();
+    const matched = teamJokes.find(({ keys }) => keys.some(k => loserLower.includes(k)));
+    const template = matched
+      ? seeded(matched.lines, r.matchId)
+      : seeded(fallbackLines(winner, loser), r.matchId);
+    lines.push(template.replace(/\{w\}/g, winner).replace(/\{l\}/g, loser));
+  } else if (washouts.length > 0) {
+    const r = washouts[0];
+    lines.push(seeded(washoutLines(r.teamA, r.teamB), r.matchId));
+  } else {
+    const r = results[0];
+    lines.push(seeded(noResultLines(r.teamA, r.teamB), r.matchId));
+  }
+
+  return lines[0];
 };
 
 const PAGE_SIZE = 10;
@@ -87,6 +273,17 @@ const Leaderboard = () => {
   const [statsMap, setStatsMap] = useState<Record<string, ComputedStats>>({});
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [matchBreakdown, setMatchBreakdown] = useState<Record<string, MatchPoints[]>>({});
+  const [topTodayUsers, setTopTodayUsers] = useState<TodayTopUser[]>([]);
+  const [topTodayPoints, setTopTodayPoints] = useState<number | null>(null);
+  const [todayMatchResults, setTodayMatchResults] = useState<TodayMatchResult[]>([]);
+  const [celebrationState, setCelebrationState] = useState<'win' | 'loss' | 'washout' | 'missed' | null>(null);
+
+  const getTodayDateKeys = () => {
+    const now = new Date();
+    const localKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const utcKey = now.toISOString().slice(0, 10);
+    return Array.from(new Set([localKey, utcKey]));
+  };
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
@@ -125,6 +322,132 @@ const Leaderboard = () => {
           : r.display_name,
       }));
       setRows(lbRows);
+
+      const todayDateKeys = getTodayDateKeys();
+      const { data: todayMatchesData } = await supabase
+        .from('matches')
+        .select('id, match_date')
+        .in('match_date', todayDateKeys);
+
+      const todayMatchIds = ((todayMatchesData ?? []) as TodayMatchRow[])
+        .map((m) => Number(m.id))
+        .filter((id) => Number.isFinite(id));
+
+      if (todayMatchIds.length > 0) {
+        // Fetch match team names + winner info for today's matches
+        const [todayMatchInfoRes, todayCARes] = await Promise.all([
+          supabase.from('matches').select('id, match_number, team_a, team_b').in('id', todayMatchIds),
+          supabase.from('correct_answers').select('match_id, winner, is_washout').in('match_id', todayMatchIds),
+        ]);
+        const matchInfoMap = new Map<number, { match_number: number; team_a: string; team_b: string }>();
+        for (const m of todayMatchInfoRes.data ?? []) matchInfoMap.set(Number(m.id), { match_number: m.match_number ?? 0, team_a: m.team_a ?? '', team_b: m.team_b ?? '' });
+        const caMap = new Map<number, { winner: string | null; is_washout: boolean }>();
+        for (const ca of todayCARes.data ?? []) caMap.set(Number(ca.match_id), { winner: ca.winner ?? null, is_washout: !!ca.is_washout });
+
+        const results: TodayMatchResult[] = todayMatchIds.map((mid) => {
+          const info = matchInfoMap.get(mid);
+          const ca = caMap.get(mid);
+          const winner = ca?.winner ?? null;
+          const isWashout = ca?.is_washout ?? false;
+          const loser = winner && info ? (info.team_a.toLowerCase() === winner.toLowerCase() ? info.team_b : info.team_a) : null;
+          return {
+            matchId: mid,
+            matchNumber: info?.match_number ?? 0,
+            teamA: info?.team_a ?? '',
+            teamB: info?.team_b ?? '',
+            winner,
+            loser,
+            isWashout,
+          };
+        }).filter(r => r.teamA || r.teamB);
+        setTodayMatchResults(results);
+
+        // ── Determine celebration state based on user's latest today-match prediction ──
+        // Find the latest graded today's match (highest match_number that has a CA entry)
+        const currentUserId = session?.user?.id;
+        const gradedTodayMatchIds = todayMatchIds.filter(mid => caMap.has(mid));
+        if (currentUserId && gradedTodayMatchIds.length > 0) {
+          // Sort by match_number descending to get the latest
+          const latestMatchId = gradedTodayMatchIds.sort((a, b) => {
+            const aNum = matchInfoMap.get(a)?.match_number ?? 0;
+            const bNum = matchInfoMap.get(b)?.match_number ?? 0;
+            return bNum - aNum;
+          })[0];
+
+          const latestCA = caMap.get(latestMatchId);
+          // Fetch user's prediction for the latest match
+          const { data: userPredData } = await supabase
+            .from('predictions')
+            .select('predicted_winner')
+            .eq('user_id', currentUserId)
+            .eq('match_id', latestMatchId)
+            .maybeSingle();
+
+          let newCelebration: 'win' | 'loss' | 'washout' | 'missed' | null = null;
+          let celebDuration = 7500;
+
+          if (latestCA?.is_washout) {
+            // Washout match — show rain regardless of prediction
+            newCelebration = 'washout';
+            celebDuration = 7000;
+          } else if (!userPredData) {
+            // User didn't submit a prediction
+            newCelebration = 'missed';
+            celebDuration = 7000;
+          } else if (latestCA?.winner && userPredData.predicted_winner) {
+            // Compare predicted_winner to actual winner (case-insensitive)
+            const predicted = (userPredData.predicted_winner ?? '').toLowerCase().trim();
+            const actual = (latestCA.winner ?? '').toLowerCase().trim();
+            newCelebration = predicted === actual ? 'win' : 'loss';
+            celebDuration = newCelebration === 'win' ? 7500 : 7000;
+          }
+
+          if (newCelebration) {
+            setCelebrationState(newCelebration);
+            setTimeout(() => setCelebrationState(null), celebDuration);
+          }
+        }
+
+        const { data: todayPtsData } = await supabase
+          .from('predictions_with_points')
+          .select('user_id, match_id, points')
+          .in('match_id', todayMatchIds)
+          .not('points', 'is', null);
+
+        const todayRows = (todayPtsData ?? []) as TodayPointsRow[];
+        const uniqueScoredMatchIds = new Set<number>();
+        const pointsByUser = new Map<string, number>();
+
+        todayRows.forEach((row) => {
+          if (row.points === null) return;
+          uniqueScoredMatchIds.add(Number(row.match_id));
+          pointsByUser.set(row.user_id, (pointsByUser.get(row.user_id) ?? 0) + Number(row.points));
+        });
+
+        if (pointsByUser.size > 0) {
+          const maxPoints = Math.max(...Array.from(pointsByUser.values()));
+          const nameMap = new Map(lbRows.map((r) => [r.user_id, r.display_name]));
+
+          const toppers: TodayTopUser[] = Array.from(pointsByUser.entries())
+            .filter(([, points]) => points === maxPoints)
+            .map(([userId, points]) => ({
+              user_id: userId,
+              display_name: nameMap.get(userId) ?? userId,
+              today_points: points,
+            }))
+            .sort((a, b) => a.display_name.localeCompare(b.display_name));
+
+          setTopTodayPoints(maxPoints);
+          setTopTodayUsers(toppers);
+        } else {
+          setTopTodayPoints(null);
+          setTopTodayUsers([]);
+        }
+      } else {
+        setTopTodayPoints(null);
+        setTopTodayUsers([]);
+        setTodayMatchResults([]);
+      }
 
       // Build stats map
       const preds = (predRes.data ?? []) as PredRow[];
@@ -223,7 +546,7 @@ const Leaderboard = () => {
       setLoading(false);
     };
     fetchLeaderboard();
-  }, []);
+  }, [session?.user?.id]);
 
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {
@@ -313,6 +636,60 @@ const Leaderboard = () => {
   const myRank = myRow ? (rankMap[myRow.user_id] ?? null) : null;
   const visible = showAll ? sorted : sorted.slice(0, PAGE_SIZE);
 
+  // ── Celebration particles ─────────────────────────────────────────────────
+  // Lazy useState initialisers — Math.random() runs once on mount, ESLint-safe.
+  type Particle = { id: number; left: number; animDelay: number; animDur: number; size: number; color: string; rotate: number; drift: number; shape: string };
+
+  // 🎉 WIN — vibrant multicolour confetti
+  const [winParticles] = useState<Particle[]>(() => {
+    const c = ['#f59e0b','#a855f7','#22d3ee','#f43f5e','#4ade80','#fbbf24','#818cf8','#fb7185','#34d399','#f97316'];
+    return Array.from({ length: 80 }, (_, i) => ({
+      id: i, left: Math.random() * 100, animDelay: Math.random() * 1.8,
+      animDur: 2.4 + Math.random() * 2.0, size: 8 + Math.random() * 12,
+      color: c[i % c.length], rotate: Math.random() * 360,
+      drift: (Math.random() - 0.5) * 160, shape: ['🎊','🎉','⭐','✨','🏆','🌟','💥','🎯'][i % 8],
+    }));
+  });
+
+  // 😔 LOSS — red particles
+  const [lossParticles] = useState<Particle[]>(() => {
+    const c = ['#ef4444','#dc2626','#fca5a5','#b91c1c','#f87171'];
+    return Array.from({ length: 40 }, (_, i) => ({
+      id: i, left: Math.random() * 100, animDelay: Math.random() * 1.4,
+      animDur: 1.8 + Math.random() * 1.4, size: 14 + Math.random() * 10,
+      color: c[i % c.length], rotate: Math.random() * 180,
+      drift: (Math.random() - 0.5) * 80, shape: ['💔','😭','💔','😢','🥺','💔','😔','😩','💔','😿'][i % 10],
+    }));
+  });
+
+  // 🌧️ WASHOUT — blue-grey rain drops
+  const [washoutParticles] = useState<Particle[]>(() => {
+    const c = ['#60a5fa','#93c5fd','#bfdbfe','#3b82f6','#a5b4fc','#7dd3fc'];
+    return Array.from({ length: 55 }, (_, i) => ({
+      id: i, left: Math.random() * 100, animDelay: Math.random() * 1.6,
+      animDur: 1.2 + Math.random() * 1.0, size: 12 + Math.random() * 10,
+      color: c[i % c.length], rotate: 0,
+      drift: (Math.random() - 0.5) * 20, shape: ['🌧️','💧','☔','🌨️','⛈️'][i % 5],
+    }));
+  });
+
+  // ❓ MISSED — warning / clock / question mark particles
+  const [missedParticles] = useState<Particle[]>(() => {
+    const c = ['#fbbf24','#f97316','#ef4444','#facc15','#fb923c'];
+    return Array.from({ length: 40 }, (_, i) => ({
+      id: i, left: Math.random() * 100, animDelay: Math.random() * 1.6,
+      animDur: 2.0 + Math.random() * 1.6, size: 14 + Math.random() * 10,
+      color: c[i % c.length], rotate: Math.random() * 360,
+      drift: (Math.random() - 0.5) * 120, shape: ['❓','⏰','📋','😬','🤦','⚠️','🙈'][i % 7],
+    }));
+  });
+
+  const PARTICLES: Particle[] =
+    celebrationState === 'win'     ? winParticles :
+    celebrationState === 'loss'    ? lossParticles :
+    celebrationState === 'washout' ? washoutParticles :
+    celebrationState === 'missed'  ? missedParticles : [];
+
   const streakLabel = (streak: number, fiferCount: number) => {
     // Fifer earned + still has active streak
     if (fiferCount > 0 && streak > 0)
@@ -332,6 +709,159 @@ const Leaderboard = () => {
   return (
     <Box sx={{ minHeight: '100vh', background: '#f5f5f7', pb: 8 }}>
       <Navbar />
+
+      {/* ── Celebration overlay ───────────────────────────── */}
+      {celebrationState && (() => {
+        // Per-state config
+        const cfg = {
+          win: {
+            tint: 'radial-gradient(ellipse at 50% 0%, rgba(168,85,247,0.15) 0%, transparent 65%)',
+            bannerBg: 'linear-gradient(135deg, rgba(109,40,217,0.92) 0%, rgba(245,158,11,0.88) 100%)',
+            bannerBorder: '1px solid rgba(196,181,253,0.55)',
+            bannerShadow: '0 20px 56px rgba(124,58,237,0.65)',
+            icon: '🏆🎉',
+            title: 'Nailed it! Correct pick!',
+            sub: 'Your prediction was spot on 🔥 Keep the streak going!',
+            anim: 'confettiFall',
+            dur: 7.5,
+          },
+          loss: {
+            tint: 'radial-gradient(ellipse at 50% 30%, rgba(239,68,68,0.18) 0%, transparent 65%)',
+            bannerBg: 'linear-gradient(135deg, rgba(185,28,28,0.92) 0%, rgba(239,68,68,0.88) 100%)',
+            bannerBorder: '1px solid rgba(252,165,165,0.4)',
+            bannerShadow: '0 12px 36px rgba(220,38,38,0.55)',
+            icon: '💔😭',
+            title: 'Wrong prediction this time',
+            sub: 'Every legend has a bad day — come back stronger next match! 💪🔥',
+            anim: 'floatDown',
+            dur: 7.0,
+          },
+          washout: {
+            tint: 'radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.18) 0%, transparent 65%)',
+            bannerBg: 'linear-gradient(135deg, rgba(30,58,138,0.92) 0%, rgba(59,130,246,0.82) 100%)',
+            bannerBorder: '1px solid rgba(147,197,253,0.4)',
+            bannerShadow: '0 14px 40px rgba(59,130,246,0.5)',
+            icon: '☔🌧️',
+            title: 'Match washed out!',
+            sub: 'Rain wins today — your prediction energy is saved for the next one! 🌈',
+            anim: 'rainDrop',
+            dur: 7.0,
+          },
+          missed: {
+            tint: 'radial-gradient(ellipse at 50% 30%, rgba(234,179,8,0.15) 0%, transparent 65%)',
+            bannerBg: 'linear-gradient(135deg, rgba(120,53,15,0.92) 0%, rgba(234,179,8,0.82) 100%)',
+            bannerBorder: '1px solid rgba(251,191,36,0.4)',
+            bannerShadow: '0 14px 40px rgba(234,179,8,0.4)',
+            icon: '⏰😬',
+            title: 'Prediction missed!',
+            sub: 'Set a reminder — you\'re one prediction away from climbing the board! ⚡',
+            anim: 'floatDown',
+            dur: 7.0,
+          },
+        }[celebrationState];
+
+        return (
+          <Box
+            sx={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9999,
+              pointerEvents: 'none',
+              overflow: 'hidden',
+              background: cfg.tint,
+              // ── Keyframes for all 4 states ──
+              '@keyframes confettiFall': {
+                '0%':   { transform: 'translateY(-10vh) translateX(0) rotate(0deg)', opacity: 1 },
+                '80%':  { opacity: 0.9 },
+                '100%': { transform: 'translateY(115vh) translateX(var(--drift)) rotate(900deg)', opacity: 0 },
+              },
+              '@keyframes rainDrop': {
+                '0%':   { transform: 'translateY(-8vh) scaleY(0.8)', opacity: 0.9 },
+                '60%':  { opacity: 0.75 },
+                '100%': { transform: 'translateY(112vh) scaleY(1.4)', opacity: 0 },
+              },
+              '@keyframes floatDown': {
+                '0%':   { transform: 'translateY(-8vh) translateX(0) rotate(0deg)', opacity: 1 },
+                '70%':  { opacity: 0.85 },
+                '100%': { transform: 'translateY(112vh) translateX(var(--drift)) rotate(360deg)', opacity: 0 },
+              },
+              '@keyframes bannerIn': {
+                '0%':   { transform: 'translateX(-50%) translateY(-90px) scale(0.85)', opacity: 0 },
+                '12%':  { transform: 'translateX(-50%) translateY(0)     scale(1.04)', opacity: 1 },
+                '18%':  { transform: 'translateX(-50%) translateY(0)     scale(1)',    opacity: 1 },
+                '78%':  { transform: 'translateX(-50%) translateY(0)     scale(1)',    opacity: 1 },
+                '100%': { transform: 'translateX(-50%) translateY(-90px) scale(0.85)', opacity: 0 },
+              },
+            }}
+          >
+            {/* ── Particles ── */}
+            {PARTICLES.map((p: Particle) => (
+              <Box
+                key={p.id}
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: `${p.left}%`,
+                  fontSize: { xs: `${Math.round(p.size * 0.82)}px`, sm: `${p.size}px` },
+                  color: p.color,
+                  animation: `${cfg.anim} ${p.animDur}s ${p.animDelay}s ease-in forwards`,
+                  transform: `rotate(${p.rotate}deg)`,
+                  userSelect: 'none',
+                  lineHeight: 1,
+                  // CSS custom property for horizontal drift (used in keyframe)
+                  ['--drift' as string]: `${p.drift}px`,
+                }}
+              >
+                {p.shape}
+              </Box>
+            ))}
+
+            {/* ── Banner ── */}
+            <Box
+              sx={{
+                position: 'absolute',
+                top: { xs: '16%', sm: '13%' },
+                left: '50%',
+                // transform handled in keyframe; initial shift set here for layout
+                transform: 'translateX(-50%)',
+                animation: `bannerIn ${cfg.dur}s cubic-bezier(0.34,1.56,0.64,1) forwards`,
+                textAlign: 'center',
+                px: { xs: 2.5, sm: 3.5 },
+                py: { xs: 1.5, sm: 2 },
+                borderRadius: { xs: '18px', sm: '24px' },
+                backdropFilter: 'blur(20px)',
+                background: cfg.bannerBg,
+                border: cfg.bannerBorder,
+                boxShadow: cfg.bannerShadow,
+                minWidth: { xs: '220px', sm: '280px' },
+                maxWidth: { xs: 'calc(100vw - 48px)', sm: '400px' },
+              }}
+            >
+              <Typography sx={{ fontSize: { xs: '2rem', sm: '2.4rem' }, lineHeight: 1.1, mb: 0.5 }}>
+                {cfg.icon}
+              </Typography>
+              <Typography sx={{
+                fontWeight: 900,
+                fontSize: { xs: '1rem', sm: '1.2rem' },
+                color: '#fff',
+                letterSpacing: '-0.01em',
+                lineHeight: 1.3,
+              }}>
+                {cfg.title}
+              </Typography>
+              <Typography sx={{
+                fontSize: { xs: '0.72rem', sm: '0.8rem' },
+                color: 'rgba(255,255,255,0.78)',
+                fontWeight: 600,
+                mt: 0.5,
+                lineHeight: 1.4,
+              }}>
+                {cfg.sub}
+              </Typography>
+            </Box>
+          </Box>
+        );
+      })()}
 
       {/* ── Header ────────────────────────────────────────── */}
       <Box
@@ -371,8 +901,11 @@ const Leaderboard = () => {
 
       {/* ── Loading / Error ───────────────────────────────── */}
       {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', py: 8, gap: 2 }}>
           <CircularProgress sx={{ color: 'rgba(0,0,0,0.3)' }} />
+          <Typography sx={{ fontSize: '0.82rem', color: 'rgba(0,0,0,0.45)', fontStyle: 'italic', fontWeight: 600, maxWidth: '320px', textAlign: 'center' }}>
+            {getRandomDialogue()}
+          </Typography>
         </Box>
       )}
       {error && (
@@ -381,21 +914,220 @@ const Leaderboard = () => {
         </Box>
       )}
 
+      {!loading && !error && topTodayPoints !== null && topTodayPoints >= 100 && (() => {
+        const gradedResult = todayMatchResults.find(r => !r.isWashout && r.winner !== null);
+        const winnerMeta = gradedResult ? getTeamMeta(gradedResult.winner ?? undefined) : null;
+        const winColor = winnerMeta?.color ?? '#7c3aed';
+        const commentary = getMatchCommentary(todayMatchResults);
+        
+        // Helper to get team abbreviation
+        const getTeamAbbr = (team: string): string => {
+          const t = team.toLowerCase();
+          if (t.includes('kolkata') || t.includes('kkr')) return 'KKR';
+          if (t.includes('chennai') || t.includes('csk')) return 'CSK';
+          if (t.includes('bangalore') || t.includes('bengaluru') || t.includes('rcb')) return 'RCB';
+          if (t.includes('mumbai') || t.includes('mi')) return 'MI';
+          if (t.includes('hyderabad') || t.includes('sunrisers') || t.includes('srh')) return 'SRH';
+          if (t.includes('rajasthan') || t.includes('royals') || t.includes('rr')) return 'RR';
+          if (t.includes('delhi') || t.includes('dc') || t.includes('capitals')) return 'DC';
+          if (t.includes('punjab') || t.includes('pbks') || t.includes('kings')) return 'PBKS';
+          if (t.includes('gujarat') || t.includes('titans') || t.includes('gt')) return 'GT';
+          if (t.includes('lucknow') || t.includes('lsg') || t.includes('super giants')) return 'LSG';
+          return team.substring(0, 3).toUpperCase();
+        };
+        return (
+        <Container maxWidth="md" sx={{ px: { xs: 1.5, sm: 2 }, mt: 2.2 }}>
+          <Box
+            sx={{
+              borderRadius: '22px',
+              // Aurora mesh: deep navy base with shifting violet + gold + teal orbs
+              background: `
+                radial-gradient(ellipse at 15% 50%, rgba(124,58,237,0.45) 0%, transparent 55%),
+                radial-gradient(ellipse at 85% 20%, rgba(245,158,11,0.3) 0%, transparent 50%),
+                radial-gradient(ellipse at 60% 90%, rgba(20,184,166,0.25) 0%, transparent 50%),
+                linear-gradient(145deg, #0d0d1a 0%, #111128 50%, #0a0d1f 100%)
+              `,
+              boxShadow: `0 14px 44px rgba(124,58,237,0.35), 0 2px 0 rgba(255,255,255,0.07) inset`,
+              border: '1px solid rgba(139,92,246,0.3)',
+              overflow: 'hidden',
+              position: 'relative',
+              transition: 'transform 0.24s ease, box-shadow 0.24s ease',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 24px 56px rgba(124,58,237,0.5)',
+              },
+              // Soft winner-team colour bleed from the right
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                right: '-8%',
+                top: '-20%',
+                width: 280,
+                height: 280,
+                borderRadius: '50%',
+                background: `radial-gradient(circle, ${winColor}40 0%, transparent 60%)`,
+                pointerEvents: 'none',
+              },
+              // Shimmer sweep
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: '-35%',
+                width: '28%',
+                height: '100%',
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
+                transform: 'skewX(-20deg)',
+                animation: 'topperShine 3.6s ease-in-out infinite',
+              },
+              '@keyframes topperShine': {
+                '0%':   { left: '-35%' },
+                '55%':  { left: '115%' },
+                '100%': { left: '115%' },
+              },
+            }}
+          >
+            <Box
+              sx={{
+                px: { xs: 1.5, sm: 2.2 },
+                py: { xs: 1.5, sm: 1.8 },
+                display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
+                gap: 1.4,
+                alignItems: { xs: 'stretch', md: 'center' },
+                justifyContent: 'space-between',
+                position: 'relative',
+                zIndex: 1,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.15rem',
+                    boxShadow: '0 6px 16px rgba(124,58,237,0.5)',
+                    animation: 'trophyPulse 1.8s ease-in-out infinite',
+                    '@keyframes trophyPulse': {
+                      '0%': { transform: 'scale(1)', boxShadow: '0 6px 14px rgba(124,58,237,0.35)' },
+                      '50%': { transform: 'scale(1.08)', boxShadow: '0 10px 22px rgba(124,58,237,0.55)' },
+                      '100%': { transform: 'scale(1)', boxShadow: '0 6px 14px rgba(124,58,237,0.35)' },
+                    },
+                  }}
+                >
+                  🏆
+                </Box>
+                <Box>
+                  <Typography
+                    sx={{
+                      fontSize: '0.72rem',
+                      fontWeight: 900,
+                      color: 'rgba(255,255,255,0.55)',
+                      letterSpacing: '0.11em',
+                      textTransform: 'uppercase',
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {topTodayUsers.length > 1 ? "Today's Top Performers" : "Today's Top Performer"}
+                  </Typography>
+                  <Typography sx={{ fontSize: '1.05rem', fontWeight: 900, color: '#fff', lineHeight: 1.25 }}>
+                    {topTodayPoints} pts
+                  </Typography>
+                  {gradedResult && (
+                    <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,255,255,0.7)', lineHeight: 1.3, mt: 0.4 }}>
+                      Match {gradedResult.matchNumber} · {getTeamAbbr(gradedResult.teamA)} vs {getTeamAbbr(gradedResult.teamB)}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+                {topTodayUsers.map((user) => (
+                  <Box
+                    key={user.user_id}
+                    sx={{
+                      px: 1.2,
+                      py: 0.6,
+                      borderRadius: '999px',
+                      background: 'rgba(139,92,246,0.2)',
+                      border: '1px solid rgba(167,139,250,0.4)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                      backdropFilter: 'blur(8px)',
+                      transition: 'transform 0.18s ease, background 0.18s ease, border-color 0.18s ease',
+                      '&:hover': {
+                        transform: 'translateY(-1px)',
+                        background: 'rgba(139,92,246,0.32)',
+                        borderColor: 'rgba(196,181,253,0.6)',
+                      },
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '0.8rem' }}>⭐</Typography>
+                    <Typography sx={{ fontSize: '0.77rem', fontWeight: 800, color: '#f7f7f7ff' }}>
+                      {user.display_name}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                px: { xs: 1.5, sm: 2.2 },
+                pb: 1.4,
+                mt: 0,
+                position: 'relative',
+                zIndex: 1,
+              }}
+            >
+              {/* Divider line */}
+              <Box sx={{ height: '1px', background: 'rgba(139,92,246,0.25)', mb: 1 }} />
+              {commentary && (
+                <Typography
+                  sx={{
+                    fontSize: { xs: '0.72rem', sm: '0.78rem' },
+                    color: 'rgba(233,213,255,0.9)',
+                    fontWeight: 600,
+                    fontStyle: 'italic',
+                    lineHeight: 1.55,
+                    letterSpacing: '0.01em',
+                  }}
+                >
+                  {commentary}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        </Container>
+        );
+      })()}
+
       {/* ── My rank pill (if outside top 3) ─────────────── */}
       {!loading && !error && myRow && myRank !== null && myRank > 3 && (
         <Container maxWidth="md" sx={{ px: { xs: 1.5, sm: 2 } }}>
           <Box
             sx={{
               mt: 2,
-              px: 2,
-              py: 1.25,
-              borderRadius: '16px',
-              background: '#111',
-              border: '1px solid rgba(255,255,255,0.08)',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.25)',
+              px: 2.1,
+              py: 1.3,
+              borderRadius: '18px',
+              background: 'linear-gradient(135deg, #0f172a 0%, #111827 100%)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              boxShadow: '0 8px 22px rgba(0,0,0,0.22)',
               display: 'flex',
               alignItems: 'center',
               gap: 1.25,
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              '&:hover': {
+                transform: 'translateY(-1px)',
+                boxShadow: '0 14px 28px rgba(0,0,0,0.3)',
+              },
             }}
           >
             <Box
@@ -439,8 +1171,8 @@ const Leaderboard = () => {
               borderRadius: '20px',
               overflow: 'hidden',
               border: '1px solid rgba(255,255,255,0.08)',
-              background: '#111',
-              boxShadow: '0 4px 32px rgba(0,0,0,0.4)',
+              background: 'linear-gradient(180deg, #0f1117 0%, #101217 100%)',
+              boxShadow: '0 8px 34px rgba(0,0,0,0.42)',
             }}
           >
             {/* Column headers */}
@@ -449,9 +1181,9 @@ const Leaderboard = () => {
                 display: 'grid',
                 gridTemplateColumns: '40px 1fr 48px 58px 68px',
                 alignItems: 'center',
-                px: 2,
+                px: 0.5,
                 py: 1.5,
-                background: '#000',
+                background: 'linear-gradient(180deg, #050607 0%, #000 100%)',
                 borderBottom: '1px solid rgba(0,0,0,0.07)',
               }}
             >
@@ -471,6 +1203,7 @@ const Leaderboard = () => {
                     textTransform: 'uppercase',
                     letterSpacing: '0.1em',
                     textAlign: align as 'center' | 'left' | 'right',
+                    ...(label === 'Points' && { pr: 1.5 }),
                   }}
                 >
                   {label}
@@ -505,11 +1238,15 @@ const Leaderboard = () => {
                       px: 0.5,
                       py: 1.5,
                       borderBottom: isExpanded ? 'none' : isLast ? 'none' : '1px solid rgba(255,255,255,0.06)',
-                      background: isExpanded ? 'rgba(255,255,255,0.05)' : '#111',
+                      background: isExpanded ? 'rgba(255,255,255,0.06)' : 'transparent',
                       cursor: 'pointer',
                       position: 'relative',
-                      transition: 'background 0.15s',
-                      '&:hover': { background: 'rgba(255,255,255,0.05)' },
+                      transition: 'background 0.22s ease, transform 0.22s ease, box-shadow 0.22s ease',
+                      '&:hover': {
+                        background: 'rgba(255,255,255,0.045)',
+                        transform: 'translateY(-1px)',
+                        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.04)',
+                      },
                       ...(isMe && {
                         '&::before': {
                           content: '""',
@@ -561,6 +1298,7 @@ const Leaderboard = () => {
                             background: medal
                               ? `linear-gradient(90deg, ${medal.color}, ${medal.color}80)`
                               : 'linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.15))',
+                            transition: 'width 0.55s ease',
                           }}
                         />
                       </Box>
@@ -597,19 +1335,19 @@ const Leaderboard = () => {
                     })()}
 
                     {/* Points chip */}
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.3 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.3, pr: 1.5 }}>
                         <Box
                           sx={{
                             px: 1.1, py: 0.35, borderRadius: '9px',
                             background: medal ? medal.glow : 'rgba(255,255,255,0.1)',
                             border: medal ? `1px solid ${medal.color}60` : '1px solid rgba(255,255,255,0.15)',
+                            transition: 'transform 0.18s ease, background 0.18s ease',
                           }}
                         >
                           <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: medal ? medal.color : '#fff', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
                             {displayPts}
                           </Typography>
                         </Box>
-
                     </Box>
 
                   </Box>

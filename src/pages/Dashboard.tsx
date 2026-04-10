@@ -7,6 +7,7 @@ import { supabase } from '../config/supabaseClient';
 import MatchCard from '../components/MatchCard/MatchCard';
 import type { Match, UserPrediction } from '../components/MatchCard/MatchCard';
 import { getTeamMeta } from '../utils/teamMeta';
+import { getRandomDialogue } from '../utils/loadingDialogues';
 
 const Dashboard: React.FC = () => {
   const { session } = useAuth();
@@ -80,7 +81,7 @@ const Dashboard: React.FC = () => {
     };
 
     fetchMatches();
-  }, []);
+  }, [session?.user?.id]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f5f5f7' }}>
@@ -89,8 +90,11 @@ const Dashboard: React.FC = () => {
         {/* Page header removed as per request */}
 
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', mt: 6, gap: 2 }}>
             <CircularProgress />
+            <Typography sx={{ fontSize: '0.85rem', color: 'rgba(0,0,0,0.5)', fontStyle: 'italic', fontWeight: 600, maxWidth: '300px', textAlign: 'center' }}>
+              {getRandomDialogue()}
+            </Typography>
           </Box>
         ) : (
           <>

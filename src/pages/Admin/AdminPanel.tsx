@@ -238,15 +238,28 @@ const AdminPanel = () => {
   const handleSaveTime = async () => {
     if (!timeMatch || !editDate || !editTime) return;
     setSavingTime(true);
+
+    // Build match_start_utc: treat editDate + editTime as IST (UTC+5:30).
+    // Parse as UTC first by appending 'Z', then add 5h30m to shift IST → UTC.
+    // This avoids any browser local-timezone interference.
+    const [yyyy, mm, dd] = editDate.split('-').map(Number);
+    const [hh, min] = editTime.split(':').map(Number);
+    // Treat as UTC wall clock, then subtract 5h30m to get actual UTC
+    const utcMs = Date.UTC(yyyy, mm - 1, dd, hh, min, 0) - (5 * 60 + 30) * 60 * 1000;
+    const matchStartUtc = new Date(utcMs).toISOString();
+
     const { error } = await supabase
       .from('matches')
-      .update({ match_date: editDate, match_time: editTime })
+      .update({
+        match_date: editDate,
+        match_time: editTime,
+        match_start_utc: matchStartUtc,
+      })
       .eq('id', timeMatch.id);
     setSavingTime(false);
     if (error) {
       setToast({ open: true, message: `Error: ${error.message}`, severity: 'error' });
     } else {
-      // Update local state too
       setAllMatches((prev) =>
         prev.map((m) => m.id === timeMatch.id ? { ...m, match_date: editDate, match_time: editTime } : m)
       );
@@ -254,7 +267,7 @@ const AdminPanel = () => {
         prev.map((m) => m.id === timeMatch.id ? { ...m, match_date: editDate, match_time: editTime } : m)
       );
       setTimeMatch((prev) => prev ? { ...prev, match_date: editDate, match_time: editTime } : prev);
-      setToast({ open: true, message: `Match ${timeMatch.match_number} time updated!`, severity: 'success' });
+      setToast({ open: true, message: `Match ${timeMatch.match_number} time updated! UTC: ${matchStartUtc.replace('T', ' ').slice(0, 19)}`, severity: 'success' });
     }
   };
 

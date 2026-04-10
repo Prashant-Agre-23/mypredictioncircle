@@ -22,6 +22,7 @@ import Navbar from '../../components/Navbar/Navbar';
 import { supabase } from '../../config/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { getTeamMeta } from '../../utils/teamMeta';
+import { getRandomDialogue } from '../../utils/loadingDialogues';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -534,8 +535,11 @@ const Prediction = () => {
     return (
       <Box sx={{ minHeight: '100vh', background: '#f5f5f7' }}>
         <Navbar />
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: 'calc(100vh - 64px)', gap: 2 }}>
           <CircularProgress sx={{ color: '#000' }} />
+          <Typography sx={{ fontSize: '0.85rem', color: 'rgba(0,0,0,0.5)', fontStyle: 'italic', fontWeight: 600, maxWidth: '300px', textAlign: 'center' }}>
+            {getRandomDialogue()}
+          </Typography>
         </Box>
       </Box>
     );

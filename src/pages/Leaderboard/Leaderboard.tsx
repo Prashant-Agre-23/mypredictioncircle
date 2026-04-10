@@ -384,22 +384,22 @@ const Leaderboard = () => {
             .maybeSingle();
 
           let newCelebration: 'win' | 'loss' | 'washout' | 'missed' | null = null;
-          let celebDuration = 7500;
+          let celebDuration = 5500;
 
           if (latestCA?.is_washout) {
             // Washout match — show rain regardless of prediction
             newCelebration = 'washout';
-            celebDuration = 7000;
+            celebDuration = 5000;
           } else if (!userPredData) {
             // User didn't submit a prediction
             newCelebration = 'missed';
-            celebDuration = 7000;
+            celebDuration = 5000;
           } else if (latestCA?.winner && userPredData.predicted_winner) {
             // Compare predicted_winner to actual winner (case-insensitive)
             const predicted = (userPredData.predicted_winner ?? '').toLowerCase().trim();
             const actual = (latestCA.winner ?? '').toLowerCase().trim();
             newCelebration = predicted === actual ? 'win' : 'loss';
-            celebDuration = newCelebration === 'win' ? 7500 : 7000;
+            celebDuration = newCelebration === 'win' ? 5500 : 5000;
           }
 
           if (newCelebration) {

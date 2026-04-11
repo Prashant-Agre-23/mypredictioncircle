@@ -61,11 +61,6 @@ interface ComputedStats {
   missedPenalty: number;        // total penalty points for missed predictions
 }
 
-interface TodayMatchRow {
-  id: number;
-  match_date: string;
-}
-
 interface TodayPointsRow {
   user_id: string;
   match_id: number;
@@ -86,6 +81,7 @@ interface TodayMatchResult {
   winner: string | null;
   loser: string | null;
   isWashout: boolean;
+  matchStartUtc: string | null;
 }
 
 const getInitials = (name: string) =>
@@ -277,13 +273,7 @@ const Leaderboard = () => {
   const [topTodayPoints, setTopTodayPoints] = useState<number | null>(null);
   const [todayMatchResults, setTodayMatchResults] = useState<TodayMatchResult[]>([]);
   const [celebrationState, setCelebrationState] = useState<'win' | 'loss' | 'washout' | 'missed' | null>(null);
-
-  const getTodayDateKeys = () => {
-    const now = new Date();
-    const localKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const utcKey = now.toISOString().slice(0, 10);
-    return Array.from(new Set([localKey, utcKey]));
-  };
+  const [nextMatchStartUtc, setNextMatchStartUtc] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
@@ -323,24 +313,26 @@ const Leaderboard = () => {
       }));
       setRows(lbRows);
 
-      const todayDateKeys = getTodayDateKeys();
-      const { data: todayMatchesData } = await supabase
-        .from('matches')
-        .select('id, match_date')
-        .in('match_date', todayDateKeys);
+      // ── Find the most recently graded match and the next match after it ──
+      // Fetch the most recent graded match (latest match_number with a correct_answers entry)
+      const { data: latestCAData } = await supabase
+        .from('correct_answers')
+        .select('match_id, match_number, winner, is_washout')
+        .order('match_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      const todayMatchIds = ((todayMatchesData ?? []) as TodayMatchRow[])
-        .map((m) => Number(m.id))
-        .filter((id) => Number.isFinite(id));
+      const latestCAEntry = latestCAData as { match_id: number; match_number: number; winner: string | null; is_washout: boolean | null } | null;
+      const todayMatchIds: number[] = latestCAEntry ? [latestCAEntry.match_id] : [];
 
       if (todayMatchIds.length > 0) {
-        // Fetch match team names + winner info for today's matches
+        // Fetch match team names + winner info for the latest graded match
         const [todayMatchInfoRes, todayCARes] = await Promise.all([
-          supabase.from('matches').select('id, match_number, team_a, team_b').in('id', todayMatchIds),
+          supabase.from('matches').select('id, match_number, team_a, team_b, match_start_utc').in('id', todayMatchIds),
           supabase.from('correct_answers').select('match_id, winner, is_washout').in('match_id', todayMatchIds),
         ]);
-        const matchInfoMap = new Map<number, { match_number: number; team_a: string; team_b: string }>();
-        for (const m of todayMatchInfoRes.data ?? []) matchInfoMap.set(Number(m.id), { match_number: m.match_number ?? 0, team_a: m.team_a ?? '', team_b: m.team_b ?? '' });
+        const matchInfoMap = new Map<number, { match_number: number; team_a: string; team_b: string; match_start_utc: string | null }>();
+        for (const m of todayMatchInfoRes.data ?? []) matchInfoMap.set(Number(m.id), { match_number: m.match_number ?? 0, team_a: m.team_a ?? '', team_b: m.team_b ?? '', match_start_utc: m.match_start_utc ?? null });
         const caMap = new Map<number, { winner: string | null; is_washout: boolean }>();
         for (const ca of todayCARes.data ?? []) caMap.set(Number(ca.match_id), { winner: ca.winner ?? null, is_washout: !!ca.is_washout });
 
@@ -358,16 +350,30 @@ const Leaderboard = () => {
             winner,
             loser,
             isWashout,
+            matchStartUtc: info?.match_start_utc ?? null,
           };
         }).filter(r => r.teamA || r.teamB);
         setTodayMatchResults(results);
 
+        // Fetch the next match that starts AFTER the graded match — that's when cards/animation should hide
+        const gradedMatchStartUtc = matchInfoMap.get(todayMatchIds[0])?.match_start_utc ?? null;
+        let nextStart: string | null = null;
+        if (gradedMatchStartUtc) {
+          const { data: nextMatchData } = await supabase
+            .from('matches')
+            .select('match_start_utc')
+            .gt('match_start_utc', gradedMatchStartUtc)
+            .order('match_start_utc', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          nextStart = (nextMatchData as { match_start_utc: string } | null)?.match_start_utc ?? null;
+          setNextMatchStartUtc(nextStart);
+        }
+
         // ── Determine celebration state based on user's latest today-match prediction ──
-        // Find the latest graded today's match (highest match_number that has a CA entry)
         const currentUserId = session?.user?.id;
         const gradedTodayMatchIds = todayMatchIds.filter(mid => caMap.has(mid));
         if (currentUserId && gradedTodayMatchIds.length > 0) {
-          // Sort by match_number descending to get the latest
           const latestMatchId = gradedTodayMatchIds.sort((a, b) => {
             const aNum = matchInfoMap.get(a)?.match_number ?? 0;
             const bNum = matchInfoMap.get(b)?.match_number ?? 0;
@@ -375,7 +381,6 @@ const Leaderboard = () => {
           })[0];
 
           const latestCA = caMap.get(latestMatchId);
-          // Fetch user's prediction for the latest match
           const { data: userPredData } = await supabase
             .from('predictions')
             .select('predicted_winner')
@@ -387,22 +392,21 @@ const Leaderboard = () => {
           let celebDuration = 5500;
 
           if (latestCA?.is_washout) {
-            // Washout match — show rain regardless of prediction
             newCelebration = 'washout';
             celebDuration = 5000;
           } else if (!userPredData) {
-            // User didn't submit a prediction
             newCelebration = 'missed';
             celebDuration = 5000;
           } else if (latestCA?.winner && userPredData.predicted_winner) {
-            // Compare predicted_winner to actual winner (case-insensitive)
             const predicted = (userPredData.predicted_winner ?? '').toLowerCase().trim();
             const actual = (latestCA.winner ?? '').toLowerCase().trim();
             newCelebration = predicted === actual ? 'win' : 'loss';
             celebDuration = newCelebration === 'win' ? 5500 : 5000;
           }
 
-          if (newCelebration) {
+          // Only show animation if the next match hasn't started yet
+          const nextMatchMs = nextStart ? new Date(nextStart).getTime() : Infinity;
+          if (newCelebration && Date.now() < nextMatchMs) {
             setCelebrationState(newCelebration);
             setTimeout(() => setCelebrationState(null), celebDuration);
           }
@@ -443,6 +447,8 @@ const Leaderboard = () => {
           setTopTodayPoints(null);
           setTopTodayUsers([]);
         }
+
+
       } else {
         setTopTodayPoints(null);
         setTopTodayUsers([]);
@@ -707,7 +713,7 @@ const Leaderboard = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', background: '#f5f5f7', pb: 8 }}>
+    <Box sx={{ minHeight: '100vh', background: '#f5f5f7', pb: 2.5 }}>
       <Navbar />
 
       {/* ── Celebration overlay ───────────────────────────── */}
@@ -715,7 +721,7 @@ const Leaderboard = () => {
         // Per-state config
         const cfg = {
           win: {
-            tint: 'radial-gradient(ellipse at 50% 0%, rgba(168,85,247,0.15) 0%, transparent 65%)',
+            tint: 'radial-gradient(ellipse at 50% 60%, rgba(168,85,247,0.15) 0%, transparent 65%)',
             bannerBg: 'linear-gradient(135deg, rgba(109,40,217,0.92) 0%, rgba(245,158,11,0.88) 100%)',
             bannerBorder: '1px solid rgba(196,181,253,0.55)',
             bannerShadow: '0 20px 56px rgba(124,58,237,0.65)',
@@ -726,7 +732,7 @@ const Leaderboard = () => {
             dur: 7.5,
           },
           loss: {
-            tint: 'radial-gradient(ellipse at 50% 30%, rgba(239,68,68,0.18) 0%, transparent 65%)',
+            tint: 'radial-gradient(ellipse at 50% 60%, rgba(239,68,68,0.15) 0%, transparent 65%)',
             bannerBg: 'linear-gradient(135deg, rgba(185,28,28,0.92) 0%, rgba(239,68,68,0.88) 100%)',
             bannerBorder: '1px solid rgba(252,165,165,0.4)',
             bannerShadow: '0 12px 36px rgba(220,38,38,0.55)',
@@ -737,7 +743,7 @@ const Leaderboard = () => {
             dur: 7.0,
           },
           washout: {
-            tint: 'radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.18) 0%, transparent 65%)',
+            tint: 'radial-gradient(ellipse at 50% 60%, rgba(59,130,246,0.15) 0%, transparent 65%)',
             bannerBg: 'linear-gradient(135deg, rgba(30,58,138,0.92) 0%, rgba(59,130,246,0.82) 100%)',
             bannerBorder: '1px solid rgba(147,197,253,0.4)',
             bannerShadow: '0 14px 40px rgba(59,130,246,0.5)',
@@ -748,7 +754,7 @@ const Leaderboard = () => {
             dur: 7.0,
           },
           missed: {
-            tint: 'radial-gradient(ellipse at 50% 30%, rgba(234,179,8,0.15) 0%, transparent 65%)',
+            tint: 'radial-gradient(ellipse at 50% 60%, rgba(234,179,8,0.12) 0%, transparent 65%)',
             bannerBg: 'linear-gradient(135deg, rgba(120,53,15,0.92) 0%, rgba(234,179,8,0.82) 100%)',
             bannerBorder: '1px solid rgba(251,191,36,0.4)',
             bannerShadow: '0 14px 40px rgba(234,179,8,0.4)',
@@ -762,11 +768,13 @@ const Leaderboard = () => {
 
         return (
           <Box
+            onClick={() => setCelebrationState(null)}
             sx={{
               position: 'fixed',
               inset: 0,
               zIndex: 9999,
-              pointerEvents: 'none',
+              pointerEvents: 'all',
+              cursor: 'pointer',
               overflow: 'hidden',
               background: cfg.tint,
               // ── Keyframes for all 4 states ──
@@ -820,7 +828,7 @@ const Leaderboard = () => {
             <Box
               sx={{
                 position: 'absolute',
-                top: { xs: '16%', sm: '13%' },
+                top: { xs: '28%', sm: '24%' },
                 left: '50%',
                 // transform handled in keyframe; initial shift set here for layout
                 transform: 'translateX(-50%)',
@@ -857,6 +865,9 @@ const Leaderboard = () => {
                 lineHeight: 1.4,
               }}>
                 {cfg.sub}
+              </Typography>
+              <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', mt: 1.2, letterSpacing: '0.05em' }}>
+                Tap anywhere to dismiss
               </Typography>
             </Box>
           </Box>
@@ -914,7 +925,60 @@ const Leaderboard = () => {
         </Box>
       )}
 
-      {!loading && !error && topTodayPoints !== null && topTodayPoints >= 100 && (() => {
+      {/* ── Today's match card — shown after match starts, until results are in ── */}
+      {!loading && !error && todayMatchResults.length > 0 && (topTodayPoints === null || topTodayPoints === 0) && (() => {
+        const todayMatch = todayMatchResults[0];
+        // Only show after match has started AND before next match starts
+        const now = Date.now();
+        const matchStartMs = todayMatch.matchStartUtc ? new Date(todayMatch.matchStartUtc).getTime() : 0;
+        const nextMatchMs = nextMatchStartUtc ? new Date(nextMatchStartUtc).getTime() : Infinity;
+        if (matchStartMs === 0 || now < matchStartMs || now >= nextMatchMs) return null;
+        const metaA = getTeamMeta(todayMatch.teamA);
+        const metaB = getTeamMeta(todayMatch.teamB);
+        return (
+          <Container maxWidth="md" sx={{ px: { xs: 1.5, sm: 2 }, mt: 2.2 }}>
+            <Box sx={{
+              borderRadius: '18px',
+              background: 'linear-gradient(135deg, #111 0%, #1a1a2e 100%)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.3)',
+              overflow: 'hidden',
+              position: 'relative',
+            }}>
+              <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 8px #f59e0b', animation: 'todayPulse 1.8s ease-in-out infinite', '@keyframes todayPulse': { '0%': { opacity: 1 }, '50%': { opacity: 0.4 }, '100%': { opacity: 1 } } }} />
+                  <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Today's Match</Typography>
+                </Box>
+                <Box sx={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '12px', px: 1, py: 0.3 }}>
+                  <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: '#f59e0b' }}>Results Pending</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ px: 2, pb: 1.8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ width: 36, height: 36, borderRadius: '10px', background: metaA.color, display: 'flex', alignItems: 'center', justifyContent: 'center', p: '4px', boxShadow: `0 4px 12px ${metaA.color}66` }}>
+                    {metaA.logo ? <img src={metaA.logo} alt={todayMatch.teamA} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : null}
+                  </Box>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#fff' }}>{todayMatch.teamA}</Typography>
+                </Box>
+                <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', mx: 1 }}>VS</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#fff', textAlign: 'right' }}>{todayMatch.teamB}</Typography>
+                  <Box sx={{ width: 36, height: 36, borderRadius: '10px', background: metaB.color, display: 'flex', alignItems: 'center', justifyContent: 'center', p: '4px', boxShadow: `0 4px 12px ${metaB.color}66` }}>
+                    {metaB.logo ? <img src={metaB.logo} alt={todayMatch.teamB} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : null}
+                  </Box>
+                </Box>
+              </Box>
+            </Box>
+          </Container>
+        );
+      })()}
+
+      {!loading && !error && topTodayPoints !== null && topTodayPoints > 0 && (() => {
+        // Hide once the next match has started
+        const now = Date.now();
+        const nextMatchMs = nextMatchStartUtc ? new Date(nextMatchStartUtc).getTime() : Infinity;
+        if (now >= nextMatchMs) return null;
         const gradedResult = todayMatchResults.find(r => !r.isWashout && r.winner !== null);
         const winnerMeta = gradedResult ? getTeamMeta(gradedResult.winner ?? undefined) : null;
         const winColor = winnerMeta?.color ?? '#7c3aed';

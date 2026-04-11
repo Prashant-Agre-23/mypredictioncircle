@@ -60,7 +60,7 @@ const MatchCard = ({ match, isActive, hasPrediction = false, userPrediction = nu
   };
 
   return (
-    <Box sx={{ position: 'relative' }}>
+    <Box>
       {/* ── Your Pick banner — mobile only ── */}
       {isLive && hasPrediction && userPrediction && (
         <Box sx={{
@@ -114,43 +114,44 @@ const MatchCard = ({ match, isActive, hasPrediction = false, userPrediction = nu
 
       {/* ── Main Card ── */}
       {/* Animated gradient border wrapper for active cards */}
-      {isLive && (
-        <Box sx={{
-          position: 'absolute',
-          inset: -2,
-          borderRadius: '22px',
-          background: `linear-gradient(270deg, ${colorA}, ${colorB}, ${colorA})`,
-          backgroundSize: '300% 300%',
-          animation: 'borderShift 4s ease infinite',
-          zIndex: 0,
-          '@keyframes borderShift': {
-            '0%': { backgroundPosition: '0% 50%' },
-            '50%': { backgroundPosition: '100% 50%' },
-            '100%': { backgroundPosition: '0% 50%' },
-          },
-        }} />
-      )}
-      <Paper
-        elevation={0}
-        onClick={handleCardClick}
-        sx={{
-          borderRadius: '20px',
-          overflow: 'hidden',
-          cursor: isLive ? 'pointer' : 'default',
-          border: isLive ? 'none' : '1px solid rgba(0,0,0,0.09)',
-          background: '#fff',
-          position: 'relative',
-          zIndex: 1,
-          transition: 'transform 0.22s ease, box-shadow 0.22s ease',
-          boxShadow: isLive
-            ? `0 4px 28px ${colorA}33, 0 4px 28px ${colorB}22`
-            : '0 2px 20px rgba(0,0,0,0.08)',
-          '&:hover': isLive ? {
-            transform: 'translateY(-5px)',
-            boxShadow: `0 16px 48px ${colorA}44, 0 16px 48px ${colorB}33`,
-          } : {},
-        }}
-      >
+      <Box sx={{ position: 'relative' }}>
+        {isLive && (
+          <Box sx={{
+            position: 'absolute',
+            inset: -2,
+            borderRadius: '22px',
+            background: `linear-gradient(270deg, ${colorA}, ${colorB}, ${colorA})`,
+            backgroundSize: '300% 300%',
+            animation: 'borderShift 4s ease infinite',
+            zIndex: 0,
+            '@keyframes borderShift': {
+              '0%': { backgroundPosition: '0% 50%' },
+              '50%': { backgroundPosition: '100% 50%' },
+              '100%': { backgroundPosition: '0% 50%' },
+            },
+          }} />
+        )}
+        <Paper
+          elevation={0}
+          onClick={handleCardClick}
+          sx={{
+            borderRadius: '20px',
+            overflow: 'hidden',
+            cursor: isLive ? 'pointer' : 'default',
+            border: isLive ? 'none' : '1px solid rgba(0,0,0,0.09)',
+            background: '#fff',
+            position: 'relative',
+            zIndex: 1,
+            transition: 'transform 0.22s ease, box-shadow 0.22s ease',
+            boxShadow: isLive
+              ? `0 4px 28px ${colorA}33, 0 4px 28px ${colorB}22`
+              : '0 2px 20px rgba(0,0,0,0.08)',
+            '&:hover': isLive ? {
+              transform: 'translateY(-5px)',
+              boxShadow: `0 16px 48px ${colorA}44, 0 16px 48px ${colorB}33`,
+            } : {},
+          }}
+        >
         {/* ── Hero: clean white bg with barely-there team colour tint ── */}
         <Box sx={{ position: 'relative', overflow: 'hidden', pb: 0 }}>
           {/* Very faint team colour wash — almost white, just a whisper of colour */}
@@ -323,6 +324,7 @@ const MatchCard = ({ match, isActive, hasPrediction = false, userPrediction = nu
           )}
         </Box>
       </Paper>
+      </Box>
     </Box>
   );
 };

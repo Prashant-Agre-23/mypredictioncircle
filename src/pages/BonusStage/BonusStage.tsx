@@ -6,7 +6,6 @@ import {
   Autocomplete,
   TextField,
   Button,
-  Chip,
   Divider,
   Snackbar,
   Alert,
@@ -38,8 +37,8 @@ const ALL_TEAMS = [
   'Lucknow Super Giants',
 ];
 
-// 25 April 2026 12:00 PM IST = 06:30 UTC
-const DEADLINE = new Date('2026-04-25T06:30:00Z');
+// 26 April 2026 11:00 AM IST = 05:30 UTC
+const DEADLINE = new Date('2026-04-26T05:30:00Z');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +59,12 @@ interface BonusPrediction {
   winner: string | null;
 }
 
+interface UserBonusPrediction extends BonusPrediction {
+  user_id: string;
+  user_email?: string;
+  display_name?: string;
+}
+
 interface BonusResult {
   predictions_locked: boolean;
   top_scorer: string | null;
@@ -71,6 +76,119 @@ interface BonusResult {
   finalists: string[];
   winner: string | null;
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const calculateBonusPoints = (pred: UserBonusPrediction, results: BonusResult | null): number => {
+  if (!results) return 0;
+  
+  let points = 0;
+  
+  // Player predictions - 100 pts each for top scorer and top wicket taker
+  if (results.top_scorer && pred.top_scorer === results.top_scorer) points += 100;
+  if (results.top_wicket_taker && pred.top_wicket_taker === results.top_wicket_taker) points += 100;
+  
+  // Player of tournament - 150 pts
+  if (results.player_of_tournament && pred.player_of_tournament === results.player_of_tournament) points += 150;
+  
+  // Most sixes and most fours - 50 pts each
+  if (results.most_sixes && pred.most_sixes === results.most_sixes) points += 50;
+  if (results.most_fours && pred.most_fours === results.most_fours) points += 50;
+  
+  // Qualifying teams - 100 pts per correct team (max 400)
+  if (results.semi_finalists && pred.semi_finalists) {
+    const correctQualifiers = pred.semi_finalists.filter(t => results.semi_finalists.includes(t)).length;
+    points += correctQualifiers * 100;
+  }
+  
+  // Finalists - 150 pts per correct team (max 300)
+  if (results.finalists && pred.finalists) {
+    const correctFinalists = pred.finalists.filter(t => results.finalists.includes(t)).length;
+    points += correctFinalists * 150;
+  }
+  
+  // Tournament winner - 200 pts
+  if (results.winner && pred.winner === results.winner) points += 200;
+  
+  return points;
+};
+
+const abbr = (name?: string) => {
+  if (!name) return '?';
+  const w = name.trim().split(/\s+/);
+  if (w.length === 1) return w[0].slice(0, 3).toUpperCase();
+  return w.map((x) => x[0]).join('').toUpperCase().slice(0, 3);
+};
+
+// ─── Table Components ─────────────────────────────────────────────────────────
+
+const thBase: React.CSSProperties = { padding: '10px 14px', fontWeight: 800, fontSize: '0.63rem', color: '#fff', textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.07)', background: '#111' };
+
+const Th = ({ children, align = 'left', sticky = false }: { children: React.ReactNode; align?: 'left' | 'center'; sticky?: boolean }) => (
+  <th style={{ ...thBase, textAlign: align, ...(sticky ? { position: 'sticky', left: 0, zIndex: 2, boxShadow: '2px 0 4px rgba(0,0,0,0.06)' } : {}) }}>
+    {children}
+  </th>
+);
+
+const Td = ({ children, align = 'left', highlight = false, correct = false, sticky = false }: { children: React.ReactNode; align?: 'left' | 'center'; highlight?: boolean; correct?: boolean; sticky?: boolean }) => (
+  <td style={{ padding: '11px 14px', textAlign: align, verticalAlign: 'middle', background: correct ? '#f0fdf4' : (highlight ? '#fff' : '#fff'), ...(sticky ? { position: 'sticky', left: 0, zIndex: 1, boxShadow: '2px 0 4px rgba(0,0,0,0.06)', background: highlight ? '#fffbeb' : '#fff' } : {}), borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+    {children}
+  </td>
+);
+
+const NameCell = ({ name }: { name: string }) => (
+  <Typography sx={{ fontWeight: 600, fontSize: '0.78rem', color: '#111', whiteSpace: 'nowrap' }}>
+    {name}
+  </Typography>
+);
+
+const WinnerCell = ({ team }: { team: string }) => {
+  const meta = getTeamMeta(team);
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+      <Box
+        sx={{
+          width: 20, height: 20, borderRadius: '5px',
+          background: meta.color,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0, p: '2px',
+        }}
+      >
+        {meta.logo
+          ? <img src={meta.logo} alt={team} style={{ width: 16, height: 16, objectFit: 'contain' }} />
+          : null}
+      </Box>
+      <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: '#111', whiteSpace: 'nowrap' }}>
+        {abbr(team)}
+      </Typography>
+    </Box>
+  );
+};
+
+const TeamsCell = ({ teams }: { teams: string[] }) => (
+  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'nowrap' }}>
+    {teams.map((team) => {
+      const meta = getTeamMeta(team);
+      return (
+        <Box
+          key={team}
+          sx={{
+            width: 20, height: 20, borderRadius: '5px',
+            background: meta.color,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, p: '2px',
+          }}
+        >
+          {meta.logo ? <img src={meta.logo} alt={team} style={{ width: 16, height: 16, objectFit: 'contain' }} /> : null}
+        </Box>
+      );
+    })}
+  </Box>
+);
+
+const EmptyCell = () => (
+  <Typography sx={{ fontSize: '0.75rem', color: 'rgba(0,0,0,0.2)', fontWeight: 600 }}>—</Typography>
+);
 
 // ─── Static sub-components (MUST be outside main component to avoid remount) ──
 
@@ -329,6 +447,7 @@ const BonusStage = () => {
   const [winner, setWinner] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; mins: number; secs: number } | null>(null);
   const [bonusResults, setBonusResults] = useState<BonusResult | null>(null);
+  const [allPredictions, setAllPredictions] = useState<UserBonusPrediction[]>([]);
 
   useEffect(() => {
     const tick = () => {
@@ -371,6 +490,34 @@ const BonusStage = () => {
           setWinner(p.winner ?? null);
         }
       }
+
+      // Fetch all users' predictions if deadline passed
+      const isPastDeadline = Date.now() >= DEADLINE.getTime();
+      if (isPastDeadline || br?.predictions_locked) {
+        const { data: allPredsData } = await supabase
+          .from('bonus_predictions')
+          .select('*')
+          .order('created_at', { ascending: true });
+
+        if (allPredsData && allPredsData.length > 0) {
+          // Fetch user display names from leaderboard
+          const { data: usersData } = await supabase
+            .from('leaderboard')
+            .select('user_id, display_name, email');
+
+          const userMap = new Map(
+            (usersData || []).map((u: any) => [u.user_id, u.display_name || u.email?.split('@')[0] || 'Unknown'])
+          );
+
+          const enriched = allPredsData.map((pred: any) => ({
+            ...pred,
+            display_name: userMap.get(pred.user_id) || pred.user_id,
+          }));
+
+          setAllPredictions(enriched as UserBonusPrediction[]);
+        }
+      }
+
       setLoading(false);
     };
     load();
@@ -498,7 +645,7 @@ const BonusStage = () => {
                   Deadline:
                 </Typography>
                 <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#fbbf24', lineHeight: 1.4 }}>
-                  25 Apr 2026, 12:00 PM IST
+                  26 Apr 2026, 11:00 AM IST
                 </Typography>
               </Box>
               {/* countdown row */}
@@ -526,42 +673,46 @@ const BonusStage = () => {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
 
           {/* Tournament Statistics */}
-          <SectionCard title="Tournament Statistics" icon={<SportsCricketIcon sx={{ fontSize: '1.1rem', color: '#1d4ed8' }} />} accentColor="#1d4ed8">
-            <RowItem label="Top Run Scorer" pts={100} hint="Who will score the most runs this season?">
-              <PlayerSelect value={topScorer} onChange={setTopScorer} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.top_scorer} />
-            </RowItem>
-            <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
-            <RowItem label="Top Wicket Taker" pts={100} hint="Who will take the most wickets?">
-              <PlayerSelect value={topWicketTaker} onChange={setTopWicketTaker} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.top_wicket_taker} />
-            </RowItem>
-            <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
-            <RowItem label="Player of the Tournament" pts={150} hint="The standout performer across the season">
-              <PlayerSelect value={playerOfTournament} onChange={setPlayerOfTournament} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.player_of_tournament} />
-            </RowItem>
-            <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
-            <RowItem label="Most Sixes" pts={50} hint="Who will hit the most sixes?">
-              <PlayerSelect value={mostSixes} onChange={setMostSixes} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.most_sixes} />
-            </RowItem>
-            <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
-            <RowItem label="Most Fours" pts={50} hint="Who will hit the most fours?">
-              <PlayerSelect value={mostFours} onChange={setMostFours} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.most_fours} />
-            </RowItem>
-          </SectionCard>
+          {!effectiveLocked && (
+            <SectionCard title="Tournament Statistics" icon={<SportsCricketIcon sx={{ fontSize: '1.1rem', color: '#1d4ed8' }} />} accentColor="#1d4ed8">
+              <RowItem label="Top Run Scorer" pts={100} hint="Who will score the most runs this season?">
+                <PlayerSelect value={topScorer} onChange={setTopScorer} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.top_scorer} />
+              </RowItem>
+              <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
+              <RowItem label="Top Wicket Taker" pts={100} hint="Who will take the most wickets?">
+                <PlayerSelect value={topWicketTaker} onChange={setTopWicketTaker} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.top_wicket_taker} />
+              </RowItem>
+              <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
+              <RowItem label="Player of the Tournament" pts={150} hint="The standout performer across the season">
+                <PlayerSelect value={playerOfTournament} onChange={setPlayerOfTournament} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.player_of_tournament} />
+              </RowItem>
+              <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
+              <RowItem label="Most Sixes" pts={50} hint="Who will hit the most sixes?">
+                <PlayerSelect value={mostSixes} onChange={setMostSixes} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.most_sixes} />
+              </RowItem>
+              <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
+              <RowItem label="Most Fours" pts={50} hint="Who will hit the most fours?">
+                <PlayerSelect value={mostFours} onChange={setMostFours} placeholder="Search player…" disabled={effectiveLocked} options={allPlayers} correct={bonusResults?.most_fours} />
+              </RowItem>
+            </SectionCard>
+          )}
 
           {/* Tournament Progression */}
-          <SectionCard title="Tournament Progression" icon={<StarIcon sx={{ fontSize: '1.1rem', color: '#ea580c' }} />} accentColor="#ea580c">
-            <RowItem label="4 Qualifying Teams" pts={100} ptsColor="#ea580c" hint="Pick 4 teams that reach the semi-finals (each correct = +100 pts)">
-              <TeamGrid selected={semiFinalists} onToggle={effectiveLocked ? () => {} : toggleSemiFinalist} maxSelect={4} correctTeams={bonusResults?.semi_finalists} />
-            </RowItem>
-            <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
-            <RowItem label="2 Finalists" pts={150} ptsColor="#ea580c" hint="Which 2 teams will play the final? (each correct = +150 pts)">
-              <TeamGrid selected={finalists} onToggle={effectiveLocked ? () => {} : toggleFinalist} maxSelect={2} correctTeams={bonusResults?.finalists} />
-            </RowItem>
-            <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
-            <RowItem label="Tournament Winner" pts={200} ptsColor="#ea580c" hint="Pick the IPL 2026 champion">
-              <TeamGrid selected={winner ? [winner] : []} onToggle={effectiveLocked ? () => {} : toggleWinner} maxSelect={1} correctTeams={bonusResults?.winner ? [bonusResults.winner] : undefined} />
-            </RowItem>
-          </SectionCard>
+          {!effectiveLocked && (
+            <SectionCard title="Tournament Progression" icon={<StarIcon sx={{ fontSize: '1.1rem', color: '#ea580c' }} />} accentColor="#ea580c">
+              <RowItem label="4 Qualifying Teams" pts={100} ptsColor="#ea580c" hint="Pick 4 teams that reach the semi-finals (each correct = +100 pts)">
+                <TeamGrid selected={semiFinalists} onToggle={effectiveLocked ? () => {} : toggleSemiFinalist} maxSelect={4} correctTeams={bonusResults?.semi_finalists} />
+              </RowItem>
+              <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
+              <RowItem label="2 Finalists" pts={150} ptsColor="#ea580c" hint="Which 2 teams will play the final? (each correct = +150 pts)">
+                <TeamGrid selected={finalists} onToggle={effectiveLocked ? () => {} : toggleFinalist} maxSelect={2} correctTeams={bonusResults?.finalists} />
+              </RowItem>
+              <Divider sx={{ mb: 2.5, borderColor: 'rgba(0,0,0,0.05)' }} />
+              <RowItem label="Tournament Winner" pts={200} ptsColor="#ea580c" hint="Pick the IPL 2026 champion">
+                <TeamGrid selected={winner ? [winner] : []} onToggle={effectiveLocked ? () => {} : toggleWinner} maxSelect={1} correctTeams={bonusResults?.winner ? [bonusResults.winner] : undefined} />
+              </RowItem>
+            </SectionCard>
+          )}
 
           {/* Submit */}
           {!effectiveLocked && (
@@ -607,27 +758,216 @@ const BonusStage = () => {
             </Box>
           )}
 
-          {/* Summary when locked */}
-          {effectiveLocked && existing && (
+          {/* ── My Bonus Result Card (after deadline, when results are in) ── */}
+          {effectiveLocked && bonusResults && (() => {
+            const myPred = allPredictions.find(p => p.user_id === session?.user?.id);
+            if (!myPred) return null;
+
+            const fields = [
+              { label: 'Top Run Scorer', pred: myPred.top_scorer, result: bonusResults.top_scorer, pts: 100 },
+              { label: 'Top Wicket Taker', pred: myPred.top_wicket_taker, result: bonusResults.top_wicket_taker, pts: 100 },
+              { label: 'Player of Tournament', pred: myPred.player_of_tournament, result: bonusResults.player_of_tournament, pts: 150 },
+              { label: 'Most Sixes', pred: myPred.most_sixes, result: bonusResults.most_sixes, pts: 50 },
+              { label: 'Most Fours', pred: myPred.most_fours, result: bonusResults.most_fours, pts: 50 },
+            ];
+
+            const qualifiersCorrect = bonusResults.semi_finalists && myPred.semi_finalists
+              ? myPred.semi_finalists.filter(t => bonusResults.semi_finalists.includes(t)).length : 0;
+            const finalistsCorrect = bonusResults.finalists && myPred.finalists
+              ? myPred.finalists.filter(t => bonusResults.finalists.includes(t)).length : 0;
+            const winnerCorrect = !!(bonusResults.winner && myPred.winner === bonusResults.winner);
+
+            const totalPts = calculateBonusPoints(myPred, bonusResults);
+            const positive = totalPts > 0;
+
+            return (
+              <Box sx={{
+                borderRadius: '20px', overflow: 'hidden', mb: 2.5,
+                border: '1px solid rgba(0,0,0,0.07)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              }}>
+                {/* Dark header with total */}
+                <Box sx={{
+                  background: positive
+                    ? 'linear-gradient(135deg, #052e16 0%, #14532d 100%)'
+                    : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                  px: 2.5, py: 2.5,
+                }}>
+                  <Typography sx={{ fontSize: '0.6rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.12em', textTransform: 'uppercase', mb: 0.5 }}>
+                    Bonus Stage · Your Result
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+                    <Box>
+                      <Typography sx={{ fontWeight: 900, fontSize: '3rem', lineHeight: 1, color: positive ? '#4ade80' : 'rgba(255,255,255,0.4)', letterSpacing: '-0.02em' }}>
+                        {positive ? `+${totalPts}` : totalPts}
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.55rem', fontWeight: 800, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>pts</Typography>
+                    </Box>
+                    <EmojiEventsIcon sx={{ fontSize: '2.5rem', color: positive ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.1)' }} />
+                  </Box>
+                </Box>
+
+                {/* Chips */}
+                <Box sx={{ background: '#fff', px: 2, py: 1.75, display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {fields.map(({ label, pred, result, pts }) => {
+                    const hasResult = !!result;
+                    const ok = hasResult && pred === result;
+                    return (
+                      <Box key={label} sx={{
+                        px: 1.25, py: 0.5, borderRadius: '10px',
+                        background: !hasResult ? 'rgba(0,0,0,0.03)' : ok ? 'rgba(74,222,128,0.12)' : 'rgba(0,0,0,0.04)',
+                        border: `1px solid ${!hasResult ? 'rgba(0,0,0,0.07)' : ok ? 'rgba(74,222,128,0.35)' : 'rgba(0,0,0,0.09)'}`,
+                      }}>
+                        <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: !hasResult ? 'rgba(0,0,0,0.25)' : ok ? '#16a34a' : 'rgba(0,0,0,0.45)' }}>
+                          {!hasResult ? `– ${label}` : ok ? `✓ ${label} +${pts}` : `✗ ${label}`}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+
+                  {/* Qualifiers chip */}
+                  {bonusResults.semi_finalists?.length > 0 && (
+                    <Box sx={{
+                      px: 1.25, py: 0.5, borderRadius: '10px',
+                      background: qualifiersCorrect > 0 ? 'rgba(74,222,128,0.12)' : 'rgba(0,0,0,0.04)',
+                      border: `1px solid ${qualifiersCorrect > 0 ? 'rgba(74,222,128,0.35)' : 'rgba(0,0,0,0.09)'}`,
+                    }}>
+                      <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: qualifiersCorrect > 0 ? '#16a34a' : 'rgba(0,0,0,0.45)' }}>
+                        {qualifiersCorrect > 0 ? `✓ Qualifiers ${qualifiersCorrect}/4 +${qualifiersCorrect * 100}` : '✗ Qualifiers 0/4'}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Finalists chip */}
+                  {bonusResults.finalists?.length > 0 && (
+                    <Box sx={{
+                      px: 1.25, py: 0.5, borderRadius: '10px',
+                      background: finalistsCorrect > 0 ? 'rgba(74,222,128,0.12)' : 'rgba(0,0,0,0.04)',
+                      border: `1px solid ${finalistsCorrect > 0 ? 'rgba(74,222,128,0.35)' : 'rgba(0,0,0,0.09)'}`,
+                    }}>
+                      <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: finalistsCorrect > 0 ? '#16a34a' : 'rgba(0,0,0,0.45)' }}>
+                        {finalistsCorrect > 0 ? `✓ Finalists ${finalistsCorrect}/2 +${finalistsCorrect * 150}` : '✗ Finalists 0/2'}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Winner chip */}
+                  {bonusResults.winner && (
+                    <Box sx={{
+                      px: 1.25, py: 0.5, borderRadius: '10px',
+                      background: winnerCorrect ? 'rgba(74,222,128,0.12)' : 'rgba(0,0,0,0.04)',
+                      border: `1px solid ${winnerCorrect ? 'rgba(74,222,128,0.35)' : 'rgba(0,0,0,0.09)'}`,
+                    }}>
+                      <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, color: winnerCorrect ? '#16a34a' : 'rgba(0,0,0,0.45)' }}>
+                        {winnerCorrect ? '✓ Winner +200' : '✗ Winner'}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            );
+          })()}
+
+          {/* All Users' Predictions (after deadline) */}
+          {effectiveLocked && allPredictions.length > 0 && (
             <Box sx={{ background: '#fff', borderRadius: '20px', p: 2.5, border: '1px solid rgba(0,0,0,0.07)', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 2 }}>
-                <LockIcon sx={{ fontSize: '0.9rem', color: 'rgba(0,0,0,0.4)' }} />
-                <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#111' }}>Your Submitted Predictions</Typography>
+                <EmojiEventsIcon sx={{ fontSize: '1rem', color: '#fbbf24' }} />
+                <Typography sx={{ fontWeight: 800, fontSize: '0.9rem', color: '#111' }}>All Predictions ({allPredictions.length})</Typography>
               </Box>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                {[
-                  { label: 'Top Scorer', value: topScorer?.name },
-                  { label: 'Top Wicket Taker', value: topWicketTaker?.name },
-                  { label: 'Player of Tournament', value: playerOfTournament?.name },
-                  { label: 'Most Sixes', value: mostSixes?.name },
-                  { label: 'Most Fours', value: mostFours?.name },
-                  { label: 'Winner', value: winner },
-                ].filter((item) => item.value).map(({ label, value }) => (
-                  <Chip key={label} label={`${label}: ${value}`} size="small" sx={{ fontSize: '0.68rem', fontWeight: 700, background: '#f8f8f8', border: '1px solid rgba(0,0,0,0.1)', borderRadius: '8px' }} />
-                ))}
-                {finalists.map((t) => (
-                  <Chip key={`finalist-${t}`} label={`Final: ${t.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 3)}`} size="small" sx={{ fontSize: '0.68rem', fontWeight: 700, background: 'rgba(234,88,12,0.08)', border: '1px solid rgba(234,88,12,0.2)', borderRadius: '8px', color: '#ea580c' }} />
-                ))}
+              <Box sx={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.1)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
+                  <thead>
+                    <tr style={{ borderRadius: '12px 12px 0 0' }}>
+                      <Th sticky>#</Th>
+                      <Th sticky>Player</Th>
+                      <Th>Top Scorer</Th>
+                      <Th>Top Wickets</Th>
+                      <Th>POTT</Th>
+                      <Th>Most 6s</Th>
+                      <Th>Most 4s</Th>
+                      <Th>Qualifiers</Th>
+                      <Th>Finalists</Th>
+                      <Th>Winner</Th>
+                      <Th align="center">Points</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allPredictions.map((pred, idx) => {
+                      const isMe = pred.user_id === session?.user?.id;
+                      
+                      // Check correct answers
+                      const topScorerCorrect = bonusResults?.top_scorer && pred.top_scorer === bonusResults.top_scorer;
+                      const topWicketCorrect = bonusResults?.top_wicket_taker && pred.top_wicket_taker === bonusResults.top_wicket_taker;
+                      const pottCorrect = bonusResults?.player_of_tournament && pred.player_of_tournament === bonusResults.player_of_tournament;
+                      const mostSixesCorrect = bonusResults?.most_sixes && pred.most_sixes === bonusResults.most_sixes;
+                      const mostFoursCorrect = bonusResults?.most_fours && pred.most_fours === bonusResults.most_fours;
+                      
+                      // Check team arrays - partial credit for qualifiers and finalists
+                      const qualifiersCount = bonusResults?.semi_finalists && pred.semi_finalists
+                        ? pred.semi_finalists.filter(t => bonusResults.semi_finalists.includes(t)).length
+                        : 0;
+                      const finalistsCount = bonusResults?.finalists && pred.finalists
+                        ? pred.finalists.filter(t => bonusResults.finalists.includes(t)).length
+                        : 0;
+                      const winnerCorrect = bonusResults?.winner && pred.winner === bonusResults.winner;
+                      
+                      // Calculate total points
+                      const totalPoints = calculateBonusPoints(pred, bonusResults);
+                      
+                      return (
+                        <tr key={pred.user_id}>
+                          <Td highlight={isMe} sticky>
+                            <Typography sx={{ fontWeight: 700, fontSize: '0.72rem', color: 'rgba(0,0,0,0.3)' }}>{idx + 1}</Typography>
+                          </Td>
+                          <Td highlight={isMe} sticky>
+                            <NameCell name={pred.display_name || 'Unknown'} />
+                          </Td>
+                          <Td highlight={isMe} correct={topScorerCorrect}>
+                            {pred.top_scorer ? <NameCell name={pred.top_scorer} /> : <EmptyCell />}
+                          </Td>
+                          <Td highlight={isMe} correct={topWicketCorrect}>
+                            {pred.top_wicket_taker ? <NameCell name={pred.top_wicket_taker} /> : <EmptyCell />}
+                          </Td>
+                          <Td highlight={isMe} correct={pottCorrect}>
+                            {pred.player_of_tournament ? <NameCell name={pred.player_of_tournament} /> : <EmptyCell />}
+                          </Td>
+                          <Td highlight={isMe} correct={mostSixesCorrect}>
+                            {pred.most_sixes ? <NameCell name={pred.most_sixes} /> : <EmptyCell />}
+                          </Td>
+                          <Td highlight={isMe} correct={mostFoursCorrect}>
+                            {pred.most_fours ? <NameCell name={pred.most_fours} /> : <EmptyCell />}
+                          </Td>
+                          <Td highlight={isMe} correct={qualifiersCount > 0}>
+                            {pred.semi_finalists && pred.semi_finalists.length > 0 ? <TeamsCell teams={pred.semi_finalists} /> : <EmptyCell />}
+                          </Td>
+                          <Td highlight={isMe} correct={finalistsCount > 0}>
+                            {pred.finalists && pred.finalists.length > 0 ? <TeamsCell teams={pred.finalists} /> : <EmptyCell />}
+                          </Td>
+                          <Td highlight={isMe} correct={winnerCorrect}>
+                            {pred.winner ? <WinnerCell team={pred.winner} /> : <EmptyCell />}
+                          </Td>
+                          <Td align="center" highlight={isMe}>
+                            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                              <Box sx={{
+                                px: 1.5, py: 0.5, borderRadius: '12px',
+                                background: totalPoints > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(0,0,0,0.03)',
+                                border: totalPoints > 0 ? '1.5px solid rgba(16,185,129,0.3)' : '1px solid rgba(0,0,0,0.08)',
+                              }}>
+                                <Typography sx={{
+                                  fontSize: '0.8rem', fontWeight: 900,
+                                  color: totalPoints > 0 ? '#059669' : 'rgba(0,0,0,0.3)',
+                                }}>
+                                  {totalPoints}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </Box>
             </Box>
           )}

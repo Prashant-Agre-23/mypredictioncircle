@@ -14,6 +14,7 @@ interface LeaderboardRow {
   display_name: string;
   total_points: number;
   graded_predictions: number;
+  bonus_points: number;
 }
 
 interface MatchPoints {
@@ -283,7 +284,7 @@ const Leaderboard = () => {
       const [lbRes, predRes, caRes] = await Promise.all([
         supabase
           .from('leaderboard')
-          .select('rank, user_id, email, display_name, total_points, graded_predictions')
+          .select('rank, user_id, email, display_name, total_points, graded_predictions, bonus_points')
           .order('total_points', { ascending: false }),
         supabase
           .from('predictions')
@@ -556,8 +557,8 @@ const Leaderboard = () => {
 
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {
-      const aDisplay = a.total_points + (statsMap[a.user_id]?.fiferCount ?? 0) * 100 - (statsMap[a.user_id]?.missedPenalty ?? 0);
-      const bDisplay = b.total_points + (statsMap[b.user_id]?.fiferCount ?? 0) * 100 - (statsMap[b.user_id]?.missedPenalty ?? 0);
+      const aDisplay = a.total_points + (a.bonus_points ?? 0) + (statsMap[a.user_id]?.fiferCount ?? 0) * 100 - (statsMap[a.user_id]?.missedPenalty ?? 0);
+      const bDisplay = b.total_points + (b.bonus_points ?? 0) + (statsMap[b.user_id]?.fiferCount ?? 0) * 100 - (statsMap[b.user_id]?.missedPenalty ?? 0);
       return bDisplay - aDisplay;
     });
   }, [rows, statsMap]);
@@ -568,7 +569,7 @@ const Leaderboard = () => {
     let rank = 1;
     for (let i = 0; i < sorted.length; i++) {
       const effectivePoints = (pts: typeof sorted[0]) =>
-        pts.total_points + (statsMap[pts.user_id]?.fiferCount ?? 0) * 100 - (statsMap[pts.user_id]?.missedPenalty ?? 0);
+        pts.total_points + (pts.bonus_points ?? 0) + (statsMap[pts.user_id]?.fiferCount ?? 0) * 100 - (statsMap[pts.user_id]?.missedPenalty ?? 0);
       if (i === 0) {
         map[sorted[i].user_id] = 1;
       } else {
@@ -1218,7 +1219,7 @@ const Leaderboard = () => {
                 #{myRank}
               </Typography>
               <Typography sx={{ fontWeight: 700, fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)' }}>
-                {myRow.total_points + (statsMap[myRow.user_id]?.fiferCount ?? 0) * 100 - (statsMap[myRow.user_id]?.missedPenalty ?? 0)} pts
+                {myRow.total_points + (myRow.bonus_points ?? 0) + (statsMap[myRow.user_id]?.fiferCount ?? 0) * 100 - (statsMap[myRow.user_id]?.missedPenalty ?? 0)} pts
               </Typography>
             </Box>
           </Box>
@@ -1283,8 +1284,8 @@ const Leaderboard = () => {
               const stats = statsMap[row.user_id];
               const fiferBonus = (stats?.fiferCount ?? 0) * 100;
               const missedPenalty = stats?.missedPenalty ?? 0;
-              const displayPts = row.total_points + fiferBonus - missedPenalty;
-              const maxDisplayPts = (sorted[0]?.total_points ?? 1) + ((statsMap[sorted[0]?.user_id]?.fiferCount ?? 0) * 100) - (statsMap[sorted[0]?.user_id]?.missedPenalty ?? 0);
+              const displayPts = row.total_points + (row.bonus_points ?? 0) + fiferBonus - missedPenalty;
+              const maxDisplayPts = (sorted[0]?.total_points ?? 1) + (sorted[0]?.bonus_points ?? 0) + ((statsMap[sorted[0]?.user_id]?.fiferCount ?? 0) * 100) - (statsMap[sorted[0]?.user_id]?.missedPenalty ?? 0);
               const barPct = Math.max(4, Math.round((displayPts / Math.max(maxDisplayPts, 1)) * 100));
               const isLast = idx === visible.length - 1;
               const isExpanded = expandedUserId === row.user_id;
@@ -1412,6 +1413,11 @@ const Leaderboard = () => {
                             {displayPts}
                           </Typography>
                         </Box>
+                        {(row.bonus_points ?? 0) > 0 && (
+                          <Typography sx={{ fontSize: '0.55rem', fontWeight: 800, color: '#fbbf24', letterSpacing: '0.02em' }}>
+                            +{row.bonus_points} 🏆
+                          </Typography>
+                        )}
                     </Box>
 
                   </Box>

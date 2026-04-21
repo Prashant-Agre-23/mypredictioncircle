@@ -8,6 +8,7 @@ import Rules from './pages/Rules/Rules';
 import Prediction from './pages/Prediction/Prediction';
 import MyPredictions from './pages/MyPredictions';
 import AdminPanel from './pages/Admin/AdminPanel';
+import BonusStage from './pages/BonusStage';
 
 function App() {
   return (
@@ -52,6 +53,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <MyPredictions />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/bonus-stage"
+            element={
+              <ProtectedRoute>
+                <BonusStage />
               </ProtectedRoute>
             }
           />

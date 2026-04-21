@@ -117,6 +117,21 @@ const AdminPanel = () => {
   const [savingWashout, setSavingWashout] = useState(false);
   const [mom, setMom] = useState<Player | null>(null);
 
+  // ── Bonus results admin state ──
+  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+  const [bonusTopScorer, setBonusTopScorer] = useState<string>('');
+  const [bonusTopWicket, setBonusTopWicket] = useState<string>('');
+  const [bonusPOT, setBonusPOT] = useState<string>('');
+  const [bonusMostSixes, setBonusMostSixes] = useState<string>('');
+  const [bonusMostFours, setBonusMostFours] = useState<string>('');
+  const [bonusSemiFinalists, setBonusSemiFinalists] = useState<string[]>([]);
+  const [bonusFinalists, setBonusFinalists] = useState<string[]>([]);
+  const [bonusWinner, setBonusWinner] = useState<string>('');
+  const [bonusLocked, setBonusLocked] = useState(false);
+  const [savingBonus, setSavingBonus] = useState(false);
+  const [calculatingBonus, setCalculatingBonus] = useState(false);
+  const [bonusResultId, setBonusResultId] = useState<number | null>(null);
+
   const [toast, setToast] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false, message: '', severity: 'success',
   });
@@ -141,6 +156,26 @@ const AdminPanel = () => {
       );
       setAllMatches(all);
       setMatches(ended);
+
+      // Load all players for bonus autocomplete
+      const { data: playersData } = await supabase.from('players').select('id, name, team').order('name');
+      setAllPlayers((playersData || []) as Player[]);
+
+      // Load existing bonus results
+      const { data: br } = await supabase.from('bonus_results').select('*').limit(1).maybeSingle();
+      if (br) {
+        setBonusResultId(br.id);
+        setBonusTopScorer(br.top_scorer ?? '');
+        setBonusTopWicket(br.top_wicket_taker ?? '');
+        setBonusPOT(br.player_of_tournament ?? '');
+        setBonusMostSixes(br.most_sixes ?? '');
+        setBonusMostFours(br.most_fours ?? '');
+        setBonusSemiFinalists(br.semi_finalists ?? []);
+        setBonusFinalists(br.finalists ?? []);
+        setBonusWinner(br.winner ?? '');
+        setBonusLocked(br.predictions_locked ?? false);
+      }
+
       setLoading(false);
     };
     loadMatches();
@@ -299,6 +334,74 @@ const AdminPanel = () => {
       setToast({ open: true, message: `Match ${washoutMatch.match_number} marked as washout — all users get 0 pts.`, severity: 'success' });
       setWashoutMatch(null);
     }
+  };
+
+  const handleSaveBonusResults = async () => {
+    setSavingBonus(true);
+    const payload = {
+      top_scorer: bonusTopScorer || null,
+      top_wicket_taker: bonusTopWicket || null,
+      player_of_tournament: bonusPOT || null,
+      most_sixes: bonusMostSixes || null,
+      most_fours: bonusMostFours || null,
+      semi_finalists: bonusSemiFinalists,
+      finalists: bonusFinalists,
+      winner: bonusWinner || null,
+      predictions_locked: bonusLocked,
+      updated_at: new Date().toISOString(),
+    };
+    let error;
+    if (bonusResultId) {
+      ({ error } = await supabase.from('bonus_results').update(payload).eq('id', bonusResultId));
+    } else {
+      const { data, error: insertError } = await supabase.from('bonus_results').insert([payload]).select('id').single();
+      error = insertError;
+      if (data) setBonusResultId((data as { id: number }).id);
+    }
+    setSavingBonus(false);
+    if (error) {
+      setToast({ open: true, message: `Error: ${error.message}`, severity: 'error' });
+    } else {
+      setToast({ open: true, message: 'Bonus results saved!', severity: 'success' });
+    }
+  };
+
+  const handleCalculateBonusPoints = async () => {
+    setCalculatingBonus(true);
+    // Fetch all bonus predictions
+    const { data: preds, error: predErr } = await supabase.from('bonus_predictions').select('*');
+    if (predErr || !preds) {
+      setToast({ open: true, message: `Error fetching predictions: ${predErr?.message}`, severity: 'error' });
+      setCalculatingBonus(false);
+      return;
+    }
+    // For each user, calculate points
+    let updated = 0;
+    for (const pred of preds) {
+      let pts = 0;
+      if (bonusTopScorer && pred.top_scorer === bonusTopScorer) pts += 100;
+      if (bonusTopWicket && pred.top_wicket_taker === bonusTopWicket) pts += 100;
+      if (bonusPOT && pred.player_of_tournament === bonusPOT) pts += 150;
+      if (bonusMostSixes && pred.most_sixes === bonusMostSixes) pts += 50;
+      if (bonusMostFours && pred.most_fours === bonusMostFours) pts += 50;
+      // Semi-finalists
+      const correctSemis = (pred.semi_finalists || []).filter((t: string) => bonusSemiFinalists.includes(t));
+      pts += correctSemis.length * 100;
+      // Finalists
+      const correctFinals = (pred.finalists || []).filter((t: string) => bonusFinalists.includes(t));
+      pts += correctFinals.length * 150;
+      // Winner
+      if (bonusWinner && pred.winner === bonusWinner) pts += 200;
+
+      // Upsert into user_bonus_points table
+      await supabase.from('user_bonus_points').upsert(
+        { user_id: pred.user_id, bonus_points: pts, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id', ignoreDuplicates: false }
+      );
+      updated++;
+    }
+    setCalculatingBonus(false);
+    setToast({ open: true, message: `Bonus points calculated for ${updated} users!`, severity: 'success' });
   };
 
   if (!isAdmin) return null;
@@ -728,6 +831,135 @@ const AdminPanel = () => {
           >
             Mark as Washout
           </Button>
+        </Box>
+
+        {/* ════════════════════════════════════════════════════
+            ── Bonus Stage Admin ──
+        ════════════════════════════════════════════════════ */}
+        <Box sx={{ background: '#fff', borderRadius: '18px', p: 2.5, mt: 2.5, border: '1px solid rgba(0,0,0,0.07)', boxShadow: '0 2px 12px rgba(0,0,0,0.05)' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Box sx={{ width: 30, height: 30, borderRadius: '8px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <EmojiEventsIcon sx={{ fontSize: '1rem', color: '#d97706' }} />
+            </Box>
+            <Box>
+              <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#000', lineHeight: 1.2 }}>Bonus Stage Results</Typography>
+              <Typography sx={{ fontSize: '0.65rem', color: 'rgba(0,0,0,0.4)', fontWeight: 600 }}>Enter correct answers · Lock predictions · Calculate bonus pts</Typography>
+            </Box>
+          </Box>
+
+          {/* Lock toggle */}
+          <Box
+            onClick={() => setBonusLocked((v) => !v)}
+            sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              px: 1.5, py: 1, borderRadius: '12px', mb: 2,
+              background: bonusLocked ? 'rgba(220,38,38,0.07)' : 'rgba(0,0,0,0.04)',
+              border: bonusLocked ? '1px solid rgba(220,38,38,0.2)' : '1px solid rgba(0,0,0,0.08)',
+              cursor: 'pointer', userSelect: 'none',
+            }}
+          >
+            <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: bonusLocked ? '#dc2626' : 'rgba(0,0,0,0.5)' }}>
+              {bonusLocked ? '🔒 Predictions Locked' : '🔓 Predictions Open (users can edit)'}
+            </Typography>
+            <Box sx={{ width: 36, height: 20, borderRadius: '10px', background: bonusLocked ? '#dc2626' : 'rgba(0,0,0,0.15)', position: 'relative', transition: 'background 0.2s' }}>
+              <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: bonusLocked ? 18 : 2, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+            </Box>
+          </Box>
+
+          {/* Player fields */}
+          {[
+            { label: 'Top Run Scorer (100 pts)', value: bonusTopScorer, setter: setBonusTopScorer },
+            { label: 'Top Wicket Taker (100 pts)', value: bonusTopWicket, setter: setBonusTopWicket },
+            { label: 'Player of Tournament (150 pts)', value: bonusPOT, setter: setBonusPOT },
+            { label: 'Most Sixes (50 pts)', value: bonusMostSixes, setter: setBonusMostSixes },
+            { label: 'Most Fours (50 pts)', value: bonusMostFours, setter: setBonusMostFours },
+          ].map(({ label, value, setter }) => (
+            <Box key={label} sx={{ mb: 1.75 }}>
+              <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(0,0,0,0.45)', mb: 0.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</Typography>
+              <Autocomplete
+                options={allPlayers}
+                getOptionLabel={(p) => `${p.name} (${p.team})`}
+                value={allPlayers.find((p) => p.name === value) ?? null}
+                onChange={(_, val) => setter(val?.name ?? '')}
+                groupBy={(p) => p.team}
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Search player…" size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', fontSize: '0.82rem', fontWeight: 600, '& fieldset': { borderColor: 'rgba(0,0,0,0.12)' }, '&.Mui-focused fieldset': { borderColor: '#d97706', borderWidth: 1.5 } } }} />
+                )}
+                renderOption={(props, p) => {
+                  const meta = getTeamMeta(p.team);
+                  return (
+                    <Box component="li" {...props} sx={{ py: 0.8, px: 1.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.85 }}>
+                        <Box sx={{ width: 20, height: 20, borderRadius: '5px', background: meta.color, p: '2px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {meta.logo && <img src={meta.logo} alt={p.team} style={{ width: 16, height: 16, objectFit: 'contain' }} />}
+                        </Box>
+                        <Typography sx={{ fontSize: '0.8rem', fontWeight: 700 }}>{p.name}</Typography>
+                      </Box>
+                    </Box>
+                  );
+                }}
+              />
+            </Box>
+          ))}
+
+          {/* Semi-finalists (4 teams) */}
+          <Box sx={{ mb: 1.75 }}>
+            <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(0,0,0,0.45)', mb: 0.85, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Semi-Finalists — {bonusSemiFinalists.length}/4</Typography>
+            <Autocomplete
+              multiple
+              options={['Chennai Super Kings','Mumbai Indians','Royal Challengers Bengaluru','Kolkata Knight Riders','Sunrisers Hyderabad','Rajasthan Royals','Delhi Capitals','Punjab Kings','Gujarat Titans','Lucknow Super Giants']}
+              value={bonusSemiFinalists}
+              onChange={(_, val) => { setBonusSemiFinalists(val.slice(0, 4)); setBonusFinalists((f) => f.filter((t) => val.includes(t))); if (!val.includes(bonusWinner)) setBonusWinner(''); }}
+              renderInput={(params) => <TextField {...params} placeholder="Select 4 teams…" size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', fontSize: '0.82rem', fontWeight: 600, '& fieldset': { borderColor: 'rgba(0,0,0,0.12)' }, '&.Mui-focused fieldset': { borderColor: '#d97706', borderWidth: 1.5 } } }} />}
+              renderTags={(val, getTagProps) => val.map((team, idx) => { const meta = getTeamMeta(team); const tagProps = getTagProps({ index: idx }); return <Chip {...tagProps} label={team.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0,3)} size="small" sx={{ background: meta.color, color: '#fff', fontWeight: 800, fontSize: '0.65rem', borderRadius: '6px' }} />; })}
+            />
+          </Box>
+
+          {/* Finalists (2 teams from semi) */}
+          <Box sx={{ mb: 1.75 }}>
+            <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(0,0,0,0.45)', mb: 0.85, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Finalists — {bonusFinalists.length}/2</Typography>
+            <Autocomplete
+              multiple
+              options={bonusSemiFinalists}
+              value={bonusFinalists}
+              onChange={(_, val) => { setBonusFinalists(val.slice(0, 2)); if (!val.includes(bonusWinner)) setBonusWinner(''); }}
+              renderInput={(params) => <TextField {...params} placeholder="Select 2 finalists…" size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', fontSize: '0.82rem', fontWeight: 600, '& fieldset': { borderColor: 'rgba(0,0,0,0.12)' }, '&.Mui-focused fieldset': { borderColor: '#d97706', borderWidth: 1.5 } } }} />}
+              renderTags={(val, getTagProps) => val.map((team, idx) => { const meta = getTeamMeta(team); const tagProps = getTagProps({ index: idx }); return <Chip {...tagProps} label={team.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0,3)} size="small" sx={{ background: meta.color, color: '#fff', fontWeight: 800, fontSize: '0.65rem', borderRadius: '6px' }} />; })}
+            />
+          </Box>
+
+          {/* Winner */}
+          <Box sx={{ mb: 2.5 }}>
+            <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(0,0,0,0.45)', mb: 0.85, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Tournament Winner</Typography>
+            <Autocomplete
+              options={bonusFinalists}
+              value={bonusWinner || null}
+              onChange={(_, val) => setBonusWinner(val ?? '')}
+              renderInput={(params) => <TextField {...params} placeholder="Select winner…" size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', fontSize: '0.82rem', fontWeight: 600, '& fieldset': { borderColor: 'rgba(0,0,0,0.12)' }, '&.Mui-focused fieldset': { borderColor: '#d97706', borderWidth: 1.5 } } }} />}
+            />
+          </Box>
+
+          {/* Save + Calculate buttons */}
+          <Box sx={{ display: 'flex', gap: 1.5, flexDirection: { xs: 'column', sm: 'row' } }}>
+            <Button
+              fullWidth
+              variant="contained"
+              disabled={savingBonus}
+              onClick={handleSaveBonusResults}
+              sx={{ py: 1.3, borderRadius: '14px', fontWeight: 800, fontSize: '0.82rem', background: '#d97706', color: '#fff', boxShadow: 'none', textTransform: 'none', '&:hover': { background: '#b45309', boxShadow: 'none' }, '&.Mui-disabled': { background: 'rgba(0,0,0,0.1)', color: 'rgba(0,0,0,0.3)' } }}
+            >
+              {savingBonus ? 'Saving…' : 'Save Bonus Results'}
+            </Button>
+            <Button
+              fullWidth
+              variant="contained"
+              disabled={calculatingBonus}
+              onClick={handleCalculateBonusPoints}
+              sx={{ py: 1.3, borderRadius: '14px', fontWeight: 800, fontSize: '0.82rem', background: '#000', color: '#fff', boxShadow: 'none', textTransform: 'none', '&:hover': { background: '#222', boxShadow: 'none' }, '&.Mui-disabled': { background: 'rgba(0,0,0,0.1)', color: 'rgba(0,0,0,0.3)' } }}
+            >
+              {calculatingBonus ? 'Calculating…' : '⚡ Calculate Bonus Points'}
+            </Button>
+          </Box>
         </Box>
       </Container>
 

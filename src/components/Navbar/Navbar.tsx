@@ -29,6 +29,7 @@ import MenuBookIcon from '@mui/icons-material/MenuBook';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import SportsCricketIcon from '@mui/icons-material/SportsCricket';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../config/supabaseClient';
 import styles from './Navbar.module.css';
@@ -89,6 +90,7 @@ const Navbar = () => {
     { label: 'My Predictions', path: '/my-predictions', icon: <SportsCricketIcon /> },
     { label: 'Leaderboard', path: '/leaderboard', icon: <BarChartIcon /> },
     { label: 'Rules', path: '/rules', icon: <MenuBookIcon /> },
+    { label: 'Bonus Stage', path: '/bonus-stage', icon: <EmojiEventsIcon /> },
     ...(isAdmin ? [{ label: 'Admin', path: '/admin', icon: <AdminPanelSettingsIcon /> }] : []),
   ];
 

@@ -171,7 +171,7 @@ const MyPredictions = () => {
 
       if (matchError) { setLoading(false); return; }
 
-      const lockedMatches = ((matchData || []) as Match[]).filter(isMatchLocked);
+      const lockedMatches = ((matchData || []) as Match[]).filter(isMatchLocked).slice(0, 10);
       if (lockedMatches.length === 0) { setGroups([]); setLoading(false); return; }
 
       const matchIds = lockedMatches.map((m) => Number(m.id));

@@ -171,8 +171,11 @@ const MyPredictions = () => {
 
       if (matchError) { setLoading(false); return; }
 
-      const lockedMatches = ((matchData || []) as Match[]).filter(isMatchLocked).slice(0, 10);
-      if (lockedMatches.length === 0) { setGroups([]); setLoading(false); return; }
+      const allLockedMatches = ((matchData || []) as Match[]).filter(isMatchLocked);
+      if (allLockedMatches.length === 0) { setGroups([]); setLoading(false); return; }
+
+      // Show only the latest 10 locked matches to stay within Supabase row limits
+      const lockedMatches = allLockedMatches.slice(0, 10);
 
       const matchIds = lockedMatches.map((m) => Number(m.id));
 
@@ -247,6 +250,162 @@ const MyPredictions = () => {
 
     fetchData();
   }, [session]);
+
+  // ── CSV Download ────────────────────────────────────────────────────────
+  const downloadMatchReport = (group: MatchPredictionGroup) => {
+    const { match, predictions } = group;
+    const ca = correctAnswers.find((c) => Number(c.match_id) === Number(match.id)) || null;
+    const { winner: wPts, player: pPts } = (() => {
+      const mn = match.match_number;
+      if (mn <= 35) return { winner: 50, player: 60 };
+      if (mn <= 70) return { winner: 70, player: 80 };
+      return { winner: 90, player: 100 };
+    })();
+    const computePts = (pred: EnrichedPrediction): number | null => {
+      if (!ca) return null;
+      let pts = 0;
+      if (pred.predicted_winner === ca.winner) pts += wPts;
+      if (ca.batter_id && Number(pred.predicted_batter_id) === ca.batter_id) pts += pPts;
+      if (ca.bowler_id && Number(pred.predicted_bowler_id) === ca.bowler_id) pts += pPts;
+      if (ca.mom_id && Number(pred.predicted_mom_id) === ca.mom_id) pts += pPts;
+      const allCorrect = pred.predicted_winner === ca.winner &&
+        ca.batter_id && Number(pred.predicted_batter_id) === ca.batter_id &&
+        ca.bowler_id && Number(pred.predicted_bowler_id) === ca.bowler_id &&
+        ca.mom_id && Number(pred.predicted_mom_id) === ca.mom_id;
+      if (allCorrect) pts += 150;
+      if (pred.is_double_trouble) pts *= 2;
+      return pts;
+    };
+    const predictedUserIds = new Set(predictions.map((p) => p.user_id));
+    const missedUsers = allUsers.filter((u) => !predictedUserIds.has(u.user_id));
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    // SpreadsheetML XML — opens in Excel, Numbers, Google Sheets (mobile-friendly)
+    const S = {
+      header:    'font-weight:700;font-size:13pt;background:#0f172a;color:#ffffff',
+      subheader: 'font-weight:700;font-size:10pt;background:#1e3a5f;color:#ffffff',
+      colHead:   'font-weight:700;font-size:9pt;background:#1e293b;color:#94a3b8',
+      correct:   'background:#f0fdf4;color:#15803d;font-weight:700',
+      alt:       'background:#f9fafb',
+      normal:    'background:#ffffff',
+      missed:    'background:#fff5f5;color:#ef4444',
+      missedHead:'font-weight:700;background:#fef2f2;color:#dc2626',
+      pts_pos:   'font-weight:800;color:#15803d',
+      pts_neg:   'font-weight:800;color:#dc2626',
+      pts_null:  'color:#9ca3af',
+      dt:        'color:#b45309;font-weight:700',
+    };
+    const cell = (val: string, style?: string, type = 'String') =>
+      `<Cell${style ? ` ss:StyleID="${style}"` : ''}><Data ss:Type="${type}">${esc(val)}</Data></Cell>`;
+    const numCell = (val: number, style?: string) =>
+      `<Cell${style ? ` ss:StyleID="${style}"` : ''}><Data ss:Type="Number">${val}</Data></Cell>`;
+
+    const styleBlock = Object.entries(S).map(([id, css]) => {
+      const parts = css.split(';').filter(Boolean);
+      const fg = parts.find(p => p.startsWith('color:'))?.split(':')[1]?.trim();
+      const bg = parts.find(p => p.startsWith('background:'))?.split(':')[1]?.trim();
+      const bold = parts.some(p => p === 'font-weight:700' || p === 'font-weight:800');
+      const size = parts.find(p => p.startsWith('font-size:'))?.replace('font-size:','').replace('pt','').trim();
+      return `<Style ss:ID="${id}">
+        <Font${bold ? ' ss:Bold="1"' : ''}${fg ? ` ss:Color="${fg}"` : ''}${size ? ` ss:Size="${size}"` : ''}/>
+        ${bg ? `<Interior ss:Color="${bg}" ss:Pattern="Solid"/>` : ''}
+      </Style>`;
+    }).join('\n');
+
+    const matchTitle = `Match ${match.match_number} - ${abbr(match.team_a)} vs ${abbr(match.team_b)}`;
+    const matchDate = formatDate(match.match_date, match.match_time);
+
+    const predRows = predictions.map((pred, idx) => {
+      const pts = computePts(pred);
+      const winnerOk = !!(ca && pred.predicted_winner === ca.winner);
+      const batterOk = !!(ca && ca.batter_id && Number(pred.predicted_batter_id) === ca.batter_id);
+      const bowlerOk = !!(ca && ca.bowler_id && Number(pred.predicted_bowler_id) === ca.bowler_id);
+      const momOk = !!(ca && ca.mom_id && Number(pred.predicted_mom_id) === ca.mom_id);
+      const perfect = winnerOk && batterOk && bowlerOk && momOk;
+      const rowStyle = idx % 2 === 0 ? 'normal' : 'alt';
+      const ptsLabel = pts === null ? '' : pts > 0 ? `+${pts}${pred.is_double_trouble ? ' 2x' : ''}` : String(pts);
+      const ptsStyle = pts === null ? 'pts_null' : pts > 0 ? 'pts_pos' : 'pts_neg';
+      return `<Row>
+        ${numCell(idx + 1, rowStyle)}
+        ${cell(pred.display_name + (perfect ? ' [Perfect!]' : ''), rowStyle)}
+        ${cell(pred.predicted_winner ?? '', winnerOk ? 'correct' : rowStyle)}
+        ${cell(pred.batterName ?? '', batterOk ? 'correct' : rowStyle)}
+        ${cell(pred.bowlerName ?? '', bowlerOk ? 'correct' : rowStyle)}
+        ${cell(pred.momName ?? '', momOk ? 'correct' : rowStyle)}
+        ${cell(pred.is_double_trouble ? 'Yes (2x)' : '-', pred.is_double_trouble ? 'dt' : rowStyle)}
+        ${cell(ptsLabel, ptsStyle)}
+      </Row>`;
+    }).join('');
+
+    const missedRows = missedUsers.map((u, mi) => `<Row>
+      ${numCell(predictions.length + mi + 1, 'missed')}
+      ${cell(u.display_name, 'missed')}
+      ${cell('MISSED', 'missed')}
+      ${cell('-', 'missed')}
+      ${cell('-', 'missed')}
+      ${cell('-', 'missed')}
+      ${cell('-', 'missed')}
+      ${cell(ca ? `-${wPts}` : '-', 'pts_neg')}
+    </Row>`).join('');
+
+    const caRow = ca
+      ? `<Row>${cell(`Correct: Winner=${ca.winner ?? '-'}`, 'subheader')}<Cell ss:MergeAcross="6"/></Row>`
+      : '';
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:x="urn:schemas-microsoft-com:office:excel">
+  <Styles>
+    ${styleBlock}
+  </Styles>
+  <Worksheet ss:Name="Predictions">
+    <Table ss:DefaultColumnWidth="120">
+      <Column ss:Width="40"/>
+      <Column ss:Width="150"/>
+      <Column ss:Width="130"/>
+      <Column ss:Width="140"/>
+      <Column ss:Width="140"/>
+      <Column ss:Width="140"/>
+      <Column ss:Width="70"/>
+      <Column ss:Width="70"/>
+      <Row ss:Height="32">
+        ${cell(matchTitle, 'header')}<Cell ss:MergeAcross="6"/>
+      </Row>
+      <Row>
+        ${cell(`${matchDate}  |  ${predictions.length} predictions`, 'subheader')}<Cell ss:MergeAcross="6"/>
+      </Row>
+      <Row/>
+      ${caRow}
+      <Row>
+        ${cell('#', 'colHead')}
+        ${cell('Name', 'colHead')}
+        ${cell('Winner', 'colHead')}
+        ${cell('Batter', 'colHead')}
+        ${cell('Bowler', 'colHead')}
+        ${cell('MOM', 'colHead')}
+        ${cell('DT', 'colHead')}
+        ${cell('Pts', 'colHead')}
+      </Row>
+      ${predRows}
+      ${missedUsers.length > 0 ? `<Row><Cell ss:MergeAcross="7"/></Row>
+      <Row>${cell(`MISSED (${missedUsers.length})${ca ? ` — -${wPts} pts each` : ''}`, 'missedHead')}<Cell ss:MergeAcross="6"/></Row>
+      ${missedRows}` : ''}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Match_${match.match_number}_${abbr(match.team_a)}_vs_${abbr(match.team_b)}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   // ── Points calculator ────────────────────────────────────────────────────
   const getCorrectAnswer = (matchId: string | number): CorrectAnswer | null =>
@@ -529,10 +688,17 @@ const MyPredictions = () => {
                   </Box>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Box sx={{ background: 'rgba(255,255,255,0.1)', borderRadius: '8px', px: 1, py: 0.4 }}>
+                  <Box sx={{ display: { xs: 'none', sm: 'block' }, background: 'rgba(255,255,255,0.1)', borderRadius: '8px', px: 1, py: 0.4 }}>
                     <Typography sx={{ fontWeight: 700, fontSize: '0.65rem', color: 'rgba(255,255,255,0.7)' }}>
                       {predictions.length} picks
                     </Typography>
+                  </Box>
+                  <Box
+                    onClick={(e) => { e.stopPropagation(); downloadMatchReport(group); }}
+                    sx={{ display: 'flex', alignItems: 'center', gap: 0.4, background: '#ffffff', borderRadius: '8px', px: 1.2, py: 0.5, cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.18)', '&:hover': { background: '#f0f4ff' } }}
+                  >
+                    <Typography sx={{ fontSize: '0.65rem', lineHeight: 1, color: '#1e3a5f' }}>⬇</Typography>
+                    <Typography sx={{ fontWeight: 800, fontSize: '0.62rem', color: '#1e3a5f' }}>Download</Typography>
                   </Box>
                   <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.35)', display: 'inline-block', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'none' }}>▼</Typography>
                 </Box>

@@ -23,26 +23,7 @@ interface MatchPoints {
   points: number | null;
   team_a: string | null;
   team_b: string | null;
-}
-
-interface PredRow {
-  user_id: string;
-  match_id: number;
-  is_double_trouble: boolean;
-  predicted_winner: string | null;
-  predicted_batter_id: number | null;
-  predicted_bowler_id: number | null;
-  predicted_mom_id: number | null;
-}
-
-interface CaRow {
-  match_id: number;
-  match_number: number | null;
-  winner: string | null;
-  batter_id: number | null;
-  bowler_id: number | null;
-  mom_id: number | null;
-  is_washout: boolean | null;
+  winnerCorrect: boolean | null; // null = washout / missed
 }
 
 interface MatchStreakInfo {
@@ -270,6 +251,7 @@ const Leaderboard = () => {
   const [statsMap, setStatsMap] = useState<Record<string, ComputedStats>>({});
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [matchBreakdown, setMatchBreakdown] = useState<Record<string, MatchPoints[]>>({});
+  const [dtCountMap, setDtCountMap] = useState<Record<string, number>>({});
   const [topTodayUsers, setTopTodayUsers] = useState<TodayTopUser[]>([]);
   const [topTodayPoints, setTopTodayPoints] = useState<number | null>(null);
   const [todayMatchResults, setTodayMatchResults] = useState<TodayMatchResult[]>([]);
@@ -281,14 +263,11 @@ const Leaderboard = () => {
       setLoading(true);
       setError(null);
 
-      const [lbRes, predRes, caRes] = await Promise.all([
+      const [lbRes, caRes] = await Promise.all([
         supabase
           .from('leaderboard')
           .select('rank, user_id, email, display_name, total_points, graded_predictions, bonus_points')
           .order('total_points', { ascending: false }),
-        supabase
-          .from('predictions')
-          .select('user_id, match_id, is_double_trouble, predicted_winner, predicted_batter_id, predicted_bowler_id, predicted_mom_id'),
         supabase
           .from('correct_answers')
           .select('match_id, match_number, winner, batter_id, bowler_id, mom_id, is_washout'),
@@ -456,61 +435,62 @@ const Leaderboard = () => {
         setTodayMatchResults([]);
       }
 
-      // Build stats map
-      const preds = (predRes.data ?? []) as PredRow[];
-      const cas = (caRes.data ?? []) as CaRow[];
+      // Build stats map — fetch predictions per-user in parallel.
+      // Each query is scoped to one user_id so each returns <100 rows — never hits the Supabase 1000-row cap.
+      const perUserPredResults = await Promise.all(
+        lbRows.map((r) =>
+          supabase
+            .from('predictions')
+            .select('user_id, match_id, is_double_trouble, predicted_winner, predicted_batter_id, predicted_bowler_id, predicted_mom_id')
+            .eq('user_id', r.user_id)
+        )
+      );
+      const preds = perUserPredResults.flatMap((r) => (r.data ?? []) as {
+        user_id: string; match_id: number; is_double_trouble: boolean;
+        predicted_winner: string | null; predicted_batter_id: number | null;
+        predicted_bowler_id: number | null; predicted_mom_id: number | null;
+      }[]);
+      const cas = (caRes.data ?? []) as {
+        match_id: number; match_number: number | null; winner: string | null;
+        batter_id: number | null; bowler_id: number | null; mom_id: number | null; is_washout: boolean | null;
+      }[];
 
-      // Sort correct_answers by match_number so we iterate in match order
       const sortedCas = [...cas].sort((a, b) => (a.match_number ?? 0) - (b.match_number ?? 0));
 
-      // Stage-based penalty for missed predictions
       const stagePoints = (matchNumber: number) => {
         if (matchNumber <= 35) return 50;
         if (matchNumber <= 70) return 70;
         return 90;
       };
 
-      const map: Record<string, ComputedStats> = {};
-      for (const row of lbRows) {
-        // Index this user's predictions by match_id for O(1) lookup
-        const userPredMap = new Map(
-          preds
-            .filter((p) => p.user_id === row.user_id)
-            .map((p) => [p.match_id, p])
-        );
+      const map: Record<string, {
+        dtCount: number; streak: number; fiferCount: number;
+        matchStreaks: Record<number, MatchStreakInfo>;
+        perfectMatchIds: Set<number>; missedMatchIds: Set<number>;
+        washoutMatchIds: Set<number>; missedPenalty: number;
+      }> = {};
 
-        let dtCount = 0;
-        let streak = 0;
-        let fiferCount = 0;
-        let missedPenalty = 0;
+      for (const row of lbRows) {
+        const userPredMap = new Map(
+          preds.filter((p) => p.user_id === row.user_id).map((p) => [p.match_id, p])
+        );
+        let dtCount = 0, streak = 0, fiferCount = 0, missedPenalty = 0;
         const matchStreaks: Record<number, MatchStreakInfo> = {};
         const perfectMatchIds = new Set<number>();
         const missedMatchIds = new Set<number>();
         const washoutMatchIds = new Set<number>();
 
-        // Walk every graded match in order
         for (const ca of sortedCas) {
           const isWashout = ca.is_washout === true;
-
-          // If washout: streak is unaffected (neither increment nor reset)
           if (isWashout) {
             washoutMatchIds.add(ca.match_id);
             const p = userPredMap.get(ca.match_id);
-            if (!p) {
-              // Missed a washout match → still gets penalty
-              missedMatchIds.add(ca.match_id);
-              missedPenalty += stagePoints(ca.match_number ?? 0);
-            } else if (p.is_double_trouble) {
-              // DT was used on a washout — counts as consumed
-              dtCount++;
-            }
+            if (!p) { missedMatchIds.add(ca.match_id); missedPenalty += stagePoints(ca.match_number ?? 0); }
+            else if (p.is_double_trouble) dtCount++;
             matchStreaks[ca.match_id] = { streakAtMatch: streak, fiferJustEarned: false, winnerCorrect: null };
             continue;
           }
-
           const p = userPredMap.get(ca.match_id);
-
-          // Missed match (no prediction submitted) → streak resets + penalty
           if (!p) {
             streak = 0;
             missedMatchIds.add(ca.match_id);
@@ -518,22 +498,15 @@ const Leaderboard = () => {
             matchStreaks[ca.match_id] = { streakAtMatch: 0, fiferJustEarned: false, winnerCorrect: null };
             continue;
           }
-
           if (p.is_double_trouble) dtCount++;
-
-          // Streak is based on correctly predicting the winner only
           const winnerCorrect = !!ca.winner && p.predicted_winner === ca.winner;
           const batterCorrect = !!ca.batter_id && p.predicted_batter_id !== null && Number(p.predicted_batter_id) === ca.batter_id;
           const bowlerCorrect = !!ca.bowler_id && p.predicted_bowler_id !== null && Number(p.predicted_bowler_id) === ca.bowler_id;
           const momCorrect = !!ca.mom_id && p.predicted_mom_id !== null && Number(p.predicted_mom_id) === ca.mom_id;
-          const isPerfect = winnerCorrect && batterCorrect && bowlerCorrect && momCorrect;
-
-          if (isPerfect) perfectMatchIds.add(ca.match_id);
-
+          if (winnerCorrect && batterCorrect && bowlerCorrect && momCorrect) perfectMatchIds.add(ca.match_id);
           if (winnerCorrect) {
             streak += 1;
             if (streak === 5) {
-              // Fifer bonus awarded — +100 pts, reset streak to 0
               fiferCount += 1;
               matchStreaks[ca.match_id] = { streakAtMatch: 5, fiferJustEarned: true, winnerCorrect: true };
               streak = 0;
@@ -541,15 +514,16 @@ const Leaderboard = () => {
               matchStreaks[ca.match_id] = { streakAtMatch: streak, fiferJustEarned: false, winnerCorrect: true };
             }
           } else {
-            // Wrong winner or ungraded → streak resets
             streak = 0;
             matchStreaks[ca.match_id] = { streakAtMatch: 0, fiferJustEarned: false, winnerCorrect: false };
           }
         }
-
         map[row.user_id] = { dtCount, streak, fiferCount, matchStreaks, perfectMatchIds, missedMatchIds, washoutMatchIds, missedPenalty };
       }
       setStatsMap(map);
+      const dtMap: Record<string, number> = {};
+      for (const [uid, s] of Object.entries(map)) dtMap[uid] = s.dtCount;
+      setDtCountMap(dtMap);
       setLoading(false);
     };
     fetchLeaderboard();
@@ -593,24 +567,31 @@ const Leaderboard = () => {
     setExpandedUserId(userId);
     if (matchBreakdown[userId]) return; // already fetched
 
-    // Fetch all graded matches (correct_answers) — so missed + washout show too
-    const { data: caData } = await supabase
-      .from('correct_answers')
-      .select('match_id, match_number, is_washout')
-      .order('match_number', { ascending: true });
+    // Fetch all graded matches + this user's predictions in parallel (3 queries total, all single-user scoped)
+    const [caRes2, pwpRes, userPredRes] = await Promise.all([
+      supabase
+        .from('correct_answers')
+        .select('match_id, match_number, is_washout, winner, batter_id, bowler_id, mom_id')
+        .order('match_number', { ascending: true }),
+      supabase
+        .from('predictions_with_points')
+        .select('match_id, match_number, points')
+        .eq('user_id', userId)
+        .order('match_number', { ascending: true }),
+      supabase
+        .from('predictions')
+        .select('match_id, predicted_winner, predicted_batter_id, predicted_bowler_id, predicted_mom_id, is_double_trouble')
+        .eq('user_id', userId),
+    ]);
 
-    const allCaRows = (caData ?? []) as { match_id: number; match_number: number; is_washout: boolean | null }[];
+    const allCaRows = (caRes2.data ?? []) as { match_id: number; match_number: number; is_washout: boolean | null; winner: string | null; batter_id: number | null; bowler_id: number | null; mom_id: number | null }[];
     const allMatchIds = allCaRows.map((r) => r.match_id);
+    const caByMatchId = new Map(allCaRows.map((r) => [r.match_id, r]));
 
-    // Fetch points for matches the user DID predict
-    const { data: pwpData } = await supabase
-      .from('predictions_with_points')
-      .select('match_id, match_number, points')
-      .eq('user_id', userId)
-      .order('match_number', { ascending: true });
-
-    const pwpRows = (pwpData ?? []) as { match_id: number; match_number: number; points: number | null }[];
+    const pwpRows = (pwpRes.data ?? []) as { match_id: number; match_number: number; points: number | null }[];
     const pwpByMatchId = new Map(pwpRows.map((r) => [r.match_id, r]));
+    const userPreds = (userPredRes.data ?? []) as { match_id: number; predicted_winner: string | null; predicted_batter_id: number | null; predicted_bowler_id: number | null; predicted_mom_id: number | null; is_double_trouble: boolean }[];
+    const predByMatchId = new Map(userPreds.map((r) => [r.match_id, r]));
 
     // Fetch team names for all graded match IDs
     const teamMap: Record<number, { team_a: string | null; team_b: string | null }> = {};
@@ -627,16 +608,73 @@ const Leaderboard = () => {
     // Build merged list: predicted rows use real pts; missed rows use null pts; washouts use 0
     const merged: MatchPoints[] = allCaRows.map((ca) => {
       const pwp = pwpByMatchId.get(ca.match_id);
+      const pred = predByMatchId.get(ca.match_id);
+      const caRow = caByMatchId.get(ca.match_id);
+      let winnerCorrect: boolean | null = null;
+      if (!ca.is_washout && pred && caRow?.winner) {
+        winnerCorrect = pred.predicted_winner === caRow.winner;
+      }
       return {
         match_id: ca.match_id,
         match_number: ca.match_number,
-        points: ca.is_washout ? 0 : (pwp?.points ?? null), // null = missed
+        points: ca.is_washout ? 0 : (pwp?.points ?? null),
         team_a: teamMap[ca.match_id]?.team_a ?? null,
         team_b: teamMap[ca.match_id]?.team_b ?? null,
+        winnerCorrect,
       };
     });
 
+    // ── Compute stats for this user (streak, fifer, DT, missed penalty) ──────
+    const stagePoints = (mn: number) => { if (mn <= 35) return 50; if (mn <= 70) return 70; return 90; };
+    let dtCount = 0, streak = 0, fiferCount = 0, missedPenalty = 0;
+    const matchStreaks: Record<number, MatchStreakInfo> = {};
+    const perfectMatchIds = new Set<number>();
+    const missedMatchIds = new Set<number>();
+    const washoutMatchIds = new Set<number>();
+
+    for (const ca of allCaRows) {
+      const isWashout = ca.is_washout === true;
+      if (isWashout) {
+        washoutMatchIds.add(ca.match_id);
+        const p = predByMatchId.get(ca.match_id);
+        if (!p) { missedMatchIds.add(ca.match_id); missedPenalty += stagePoints(ca.match_number ?? 0); }
+        else if (p.is_double_trouble) dtCount++;
+        matchStreaks[ca.match_id] = { streakAtMatch: streak, fiferJustEarned: false, winnerCorrect: null };
+        continue;
+      }
+      const p = predByMatchId.get(ca.match_id);
+      if (!p) {
+        streak = 0;
+        missedMatchIds.add(ca.match_id);
+        missedPenalty += stagePoints(ca.match_number ?? 0);
+        matchStreaks[ca.match_id] = { streakAtMatch: 0, fiferJustEarned: false, winnerCorrect: null };
+        continue;
+      }
+      if (p.is_double_trouble) dtCount++;
+      const winnerOk = !!ca.winner && p.predicted_winner === ca.winner;
+      const batterOk = !!ca.batter_id && p.predicted_batter_id !== null && Number(p.predicted_batter_id) === ca.batter_id;
+      const bowlerOk = !!ca.bowler_id && p.predicted_bowler_id !== null && Number(p.predicted_bowler_id) === ca.bowler_id;
+      const momOk = !!ca.mom_id && p.predicted_mom_id !== null && Number(p.predicted_mom_id) === ca.mom_id;
+      if (winnerOk && batterOk && bowlerOk && momOk) perfectMatchIds.add(ca.match_id);
+      if (winnerOk) {
+        streak += 1;
+        if (streak === 5) {
+          fiferCount += 1;
+          matchStreaks[ca.match_id] = { streakAtMatch: 5, fiferJustEarned: true, winnerCorrect: true };
+          streak = 0;
+        } else {
+          matchStreaks[ca.match_id] = { streakAtMatch: streak, fiferJustEarned: false, winnerCorrect: true };
+        }
+      } else {
+        streak = 0;
+        matchStreaks[ca.match_id] = { streakAtMatch: 0, fiferJustEarned: false, winnerCorrect: false };
+      }
+    }
+
+    const userStats: ComputedStats = { dtCount, streak, fiferCount, matchStreaks, perfectMatchIds, missedMatchIds, washoutMatchIds, missedPenalty };
+    setStatsMap((prev) => ({ ...prev, [userId]: userStats }));
     setMatchBreakdown((prev) => ({ ...prev, [userId]: merged }));
+    setDtCountMap((prev) => ({ ...prev, [userId]: dtCount }));
   };
 
   const myRow = sorted.find((r) => r.user_id === session?.user?.id);
@@ -1240,14 +1278,17 @@ const Leaderboard = () => {
               boxShadow: '0 8px 34px rgba(0,0,0,0.42)',
             }}
           >
+            {/* Scrollable table wrapper */}
+            <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             {/* Column headers */}
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: '40px 1fr 48px 58px 68px',
+                gridTemplateColumns: '40px minmax(120px,1fr) 48px 64px 58px 64px 72px',
                 alignItems: 'center',
                 px: 0.5,
                 py: 1.5,
+                minWidth: 480,
                 background: 'linear-gradient(180deg, #050607 0%, #000 100%)',
                 borderBottom: '1px solid rgba(0,0,0,0.07)',
               }}
@@ -1257,18 +1298,20 @@ const Leaderboard = () => {
                 { label: 'Player', align: 'left' },
                 { label: 'DT', align: 'center' },
                 { label: 'Streak', align: 'center' },
-                { label: 'Points', align: 'right' },
+                { label: 'Pts', align: 'center' },
+                { label: 'Bonus', align: 'center' },
+                { label: 'Total', align: 'right' },
               ].map(({ label, align }) => (
                 <Typography
                   key={label}
                   sx={{
                     fontWeight: 800,
                     fontSize: '0.58rem',
-                    color: 'rgba(255,255,255,0.9)',
+                    color: label === 'Bonus' ? '#fbbf24' : label === 'Total' ? '#fff' : 'rgba(255,255,255,0.9)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.1em',
                     textAlign: align as 'center' | 'left' | 'right',
-                    ...(label === 'Points' && { pr: 1.5 }),
+                    ...(label === 'Total' && { pr: 1.5 }),
                   }}
                 >
                   {label}
@@ -1282,14 +1325,44 @@ const Leaderboard = () => {
               const displayRank = rankMap[row.user_id] ?? (sorted.findIndex(r => r.user_id === row.user_id) + 1);
               const medal = MEDAL[displayRank];
               const stats = statsMap[row.user_id];
-              const fiferBonus = (stats?.fiferCount ?? 0) * 100;
-              const missedPenalty = stats?.missedPenalty ?? 0;
-              const displayPts = row.total_points + (row.bonus_points ?? 0) + fiferBonus - missedPenalty;
-              const maxDisplayPts = (sorted[0]?.total_points ?? 1) + (sorted[0]?.bonus_points ?? 0) + ((statsMap[sorted[0]?.user_id]?.fiferCount ?? 0) * 100) - (statsMap[sorted[0]?.user_id]?.missedPenalty ?? 0);
-              const barPct = Math.max(4, Math.round((displayPts / Math.max(maxDisplayPts, 1)) * 100));
               const isLast = idx === visible.length - 1;
               const isExpanded = expandedUserId === row.user_id;
               const breakdown = matchBreakdown[row.user_id] ?? [];
+
+              // Compute running streak + summary stats from breakdown's own winnerCorrect field
+              // (fresh DB data — avoids stale matchStreaks / statsMap cache issues)
+              const { breakdownStreakMap } = (() => {
+                let runStreak = 0;
+                const m = new Map<number, { streakAfter: number; fiferEarned: boolean }>();
+                for (const brow of breakdown) {
+                  if (brow.winnerCorrect === null) {
+                    if (brow.points === null) runStreak = 0;
+                    m.set(brow.match_id, { streakAfter: runStreak, fiferEarned: false });
+                  } else if (brow.winnerCorrect) {
+                    runStreak += 1;
+                    if (runStreak === 5) {
+                      m.set(brow.match_id, { streakAfter: 5, fiferEarned: true });
+                      runStreak = 0;
+                    } else {
+                      m.set(brow.match_id, { streakAfter: runStreak, fiferEarned: false });
+                    }
+                  } else {
+                    runStreak = 0;
+                    m.set(brow.match_id, { streakAfter: 0, fiferEarned: false });
+                  }
+                }
+                return { breakdownStreakMap: m };
+              })();
+
+              // Summary row always uses statsMap (computed correctly from 10000-limit fetch on page load).
+              // breakdownStreakMap is used only for per-match details inside the accordion.
+              const effectiveStreak = stats?.streak ?? 0;
+              const effectiveFiferCount = stats?.fiferCount ?? 0;
+              const effectiveMissedPenalty = stats?.missedPenalty ?? 0;
+
+              const displayPts = row.total_points + (row.bonus_points ?? 0) + effectiveFiferCount * 100 - effectiveMissedPenalty;
+              const maxDisplayPts = (sorted[0]?.total_points ?? 1) + (sorted[0]?.bonus_points ?? 0) + ((statsMap[sorted[0]?.user_id]?.fiferCount ?? 0) * 100) - (statsMap[sorted[0]?.user_id]?.missedPenalty ?? 0);
+              const barPct = Math.max(4, Math.round((displayPts / Math.max(maxDisplayPts, 1)) * 100));
 
               return (
                 <Box key={row.user_id}>
@@ -1298,10 +1371,11 @@ const Leaderboard = () => {
                     onClick={() => handleToggleRow(row.user_id)}
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: '40px 1fr 48px 58px 68px',
+                      gridTemplateColumns: '40px minmax(120px,1fr) 48px 64px 58px 64px 72px',
                       alignItems: 'center',
                       px: 0.5,
                       py: 1.5,
+                      minWidth: 480,
                       borderBottom: isExpanded ? 'none' : isLast ? 'none' : '1px solid rgba(255,255,255,0.06)',
                       background: isExpanded ? 'rgba(255,255,255,0.06)' : 'transparent',
                       cursor: 'pointer',
@@ -1371,7 +1445,7 @@ const Leaderboard = () => {
 
                     {/* DT count */}
                     {(() => {
-                      const dt = statsMap[row.user_id]?.dtCount ?? 0;
+                      const dt = row.user_id in dtCountMap ? dtCountMap[row.user_id] : (statsMap[row.user_id]?.dtCount ?? 0);
                       return (
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {dt > 0 ? (
@@ -1387,8 +1461,8 @@ const Leaderboard = () => {
 
                     {/* Streak + fifer */}
                     {(() => {
-                      const s = stats?.streak ?? 0;
-                      const f = stats?.fiferCount ?? 0;
+                      const s = effectiveStreak;
+                      const f = effectiveFiferCount;
                       const sl = streakLabel(s, f);
                       return (
                         <Box sx={{ textAlign: 'center' }} title={sl.title}>
@@ -1399,7 +1473,25 @@ const Leaderboard = () => {
                       );
                     })()}
 
-                    {/* Points chip */}
+                    {/* Match pts column */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: 'rgba(255,255,255,0.75)', fontVariantNumeric: 'tabular-nums' }}>
+                        {row.total_points + effectiveFiferCount * 100 - effectiveMissedPenalty}
+                      </Typography>
+                    </Box>
+
+                    {/* Bonus pts column */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {(row.bonus_points ?? 0) > 0 ? (
+                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, px: 0.7, py: 0.25, borderRadius: '6px', background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)' }}>
+                          <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, color: '#fbbf24', fontVariantNumeric: 'tabular-nums' }}>+{row.bonus_points}</Typography>
+                        </Box>
+                      ) : (
+                        <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', fontWeight: 600 }}>—</Typography>
+                      )}
+                    </Box>
+
+                    {/* Total pts chip */}
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.3, pr: 1.5 }}>
                         <Box
                           sx={{
@@ -1413,11 +1505,6 @@ const Leaderboard = () => {
                             {displayPts}
                           </Typography>
                         </Box>
-                        {(row.bonus_points ?? 0) > 0 && (
-                          <Typography sx={{ fontSize: '0.55rem', fontWeight: 800, color: '#fbbf24', letterSpacing: '0.02em' }}>
-                            +{row.bonus_points} 🏆
-                          </Typography>
-                        )}
                     </Box>
 
                   </Box>
@@ -1492,11 +1579,12 @@ const Leaderboard = () => {
                               return name.slice(0, 3).toUpperCase();
                             };
                             const isLastMatch = mIdx === breakdown.length - 1;
-                            // Per-match streak info
-                            const msi = statsMap[row.user_id]?.matchStreaks?.[m.match_id];
-                            const winCorrect = msi?.winnerCorrect;
-                            const streakAfter = msi?.streakAtMatch ?? 0;
-                            const fiferEarned = msi?.fiferJustEarned ?? false;
+                            // Per-match streak info — use breakdownStreakMap (computed from
+                            // fresh DB winnerCorrect) to avoid stale matchStreaks cache issues
+                            const bsi = breakdownStreakMap.get(m.match_id);
+                            const winCorrect = m.winnerCorrect;
+                            const streakAfter = bsi?.streakAfter ?? 0;
+                            const fiferEarned = bsi?.fiferEarned ?? false;
                             return (
                               <Box
                                 key={m.match_id}
@@ -1759,6 +1847,7 @@ const Leaderboard = () => {
                 </Box>
               );
             })}
+            </Box> {/* end scrollable wrapper */}
           </Box>
 
           {/* Show all / Show less */}

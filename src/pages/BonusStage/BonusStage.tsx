@@ -38,7 +38,7 @@ const ALL_TEAMS = [
 ];
 
 // 26 April 2026 11:00 AM IST = 05:30 UTC
-const DEADLINE = new Date('2026-04-26T05:30:00Z');
+const DEADLINE = new Date('2026-04-27T05:30:00Z');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -297,21 +297,9 @@ const PlayerSelect = ({ value, onChange, placeholder, disabled, options, correct
               </Box>
             );
           }}
-          renderGroup={(params) => {
-            const meta = getTeamMeta(params.group);
-            return (
-              <Box key={params.key}>
-                <Box sx={{ px: 1.5, py: 0.6, background: '#f8f8f8', display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', position: 'sticky', top: 0, zIndex: 1 }}>
-                  <Box sx={{ width: 20, height: 20, borderRadius: '5px', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center', p: '2px', flexShrink: 0 }}>
-                    {meta.logo
-                      ? <img src={meta.logo} alt={params.group} style={{ width: 16, height: 16, objectFit: 'contain' }} />
-                      : <Typography sx={{ fontSize: '0.42rem', fontWeight: 900, color: '#fff' }}>{params.group.slice(0, 3).toUpperCase()}</Typography>}
-                  </Box>
-                </Box>
-                {params.children}
-              </Box>
-            );
-          }}
+          renderGroup={(params) => (
+            <Box key={params.key}>{params.children}</Box>
+          )}
         />
         {isCorrect && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.75 }}>
@@ -645,7 +633,7 @@ const BonusStage = () => {
                   Deadline:
                 </Typography>
                 <Typography sx={{ fontSize: '0.72rem', fontWeight: 900, color: '#fbbf24', lineHeight: 1.4 }}>
-                  26 Apr 2026, 11:00 AM IST
+                  27 Apr 2026, 11:00 AM IST
                 </Typography>
               </Box>
               {/* countdown row */}

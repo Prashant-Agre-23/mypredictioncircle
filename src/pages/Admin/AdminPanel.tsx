@@ -909,33 +909,75 @@ const AdminPanel = () => {
               multiple
               options={['Chennai Super Kings','Mumbai Indians','Royal Challengers Bengaluru','Kolkata Knight Riders','Sunrisers Hyderabad','Rajasthan Royals','Delhi Capitals','Punjab Kings','Gujarat Titans','Lucknow Super Giants']}
               value={bonusSemiFinalists}
-              onChange={(_, val) => { setBonusSemiFinalists(val.slice(0, 4)); setBonusFinalists((f) => f.filter((t) => val.includes(t))); if (!val.includes(bonusWinner)) setBonusWinner(''); }}
+              onChange={(_, val) => setBonusSemiFinalists(val.slice(0, 4))}
               renderInput={(params) => <TextField {...params} placeholder="Select 4 teams…" size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', fontSize: '0.82rem', fontWeight: 600, '& fieldset': { borderColor: 'rgba(0,0,0,0.12)' }, '&.Mui-focused fieldset': { borderColor: '#d97706', borderWidth: 1.5 } } }} />}
               renderTags={(val, getTagProps) => val.map((team, idx) => { const meta = getTeamMeta(team); const tagProps = getTagProps({ index: idx }); return <Chip {...tagProps} label={team.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0,3)} size="small" sx={{ background: meta.color, color: '#fff', fontWeight: 800, fontSize: '0.65rem', borderRadius: '6px' }} />; })}
+              renderOption={(props, team) => {
+                const meta = getTeamMeta(team);
+                const { key, ...restProps } = props as { key?: React.Key } & React.HTMLAttributes<HTMLLIElement>;
+                return (
+                  <Box component="li" key={key} {...restProps} sx={{ py: 0.85, px: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 22, height: 22, borderRadius: '5px', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, p: '2px' }}>
+                        {meta.logo ? <img src={meta.logo} alt={team} style={{ width: 18, height: 18, objectFit: 'contain' }} /> : <Typography sx={{ fontSize: '0.45rem', fontWeight: 900, color: '#fff' }}>{team.slice(0,3).toUpperCase()}</Typography>}
+                      </Box>
+                      <Typography sx={{ fontWeight: 700, fontSize: '0.82rem' }}>{team}</Typography>
+                    </Box>
+                  </Box>
+                );
+              }}
             />
           </Box>
 
-          {/* Finalists (2 teams from semi) */}
+          {/* Finalists (2 teams — any team, not limited to semis) */}
           <Box sx={{ mb: 1.75 }}>
             <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(0,0,0,0.45)', mb: 0.85, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Finalists — {bonusFinalists.length}/2</Typography>
             <Autocomplete
               multiple
-              options={bonusSemiFinalists}
+              options={['Chennai Super Kings','Mumbai Indians','Royal Challengers Bengaluru','Kolkata Knight Riders','Sunrisers Hyderabad','Rajasthan Royals','Delhi Capitals','Punjab Kings','Gujarat Titans','Lucknow Super Giants']}
               value={bonusFinalists}
-              onChange={(_, val) => { setBonusFinalists(val.slice(0, 2)); if (!val.includes(bonusWinner)) setBonusWinner(''); }}
+              onChange={(_, val) => setBonusFinalists(val.slice(0, 2))}
               renderInput={(params) => <TextField {...params} placeholder="Select 2 finalists…" size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', fontSize: '0.82rem', fontWeight: 600, '& fieldset': { borderColor: 'rgba(0,0,0,0.12)' }, '&.Mui-focused fieldset': { borderColor: '#d97706', borderWidth: 1.5 } } }} />}
               renderTags={(val, getTagProps) => val.map((team, idx) => { const meta = getTeamMeta(team); const tagProps = getTagProps({ index: idx }); return <Chip {...tagProps} label={team.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0,3)} size="small" sx={{ background: meta.color, color: '#fff', fontWeight: 800, fontSize: '0.65rem', borderRadius: '6px' }} />; })}
+              renderOption={(props, team) => {
+                const meta = getTeamMeta(team);
+                const { key, ...restProps } = props as { key?: React.Key } & React.HTMLAttributes<HTMLLIElement>;
+                return (
+                  <Box component="li" key={key} {...restProps} sx={{ py: 0.85, px: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 22, height: 22, borderRadius: '5px', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, p: '2px' }}>
+                        {meta.logo ? <img src={meta.logo} alt={team} style={{ width: 18, height: 18, objectFit: 'contain' }} /> : <Typography sx={{ fontSize: '0.45rem', fontWeight: 900, color: '#fff' }}>{team.slice(0,3).toUpperCase()}</Typography>}
+                      </Box>
+                      <Typography sx={{ fontWeight: 700, fontSize: '0.82rem' }}>{team}</Typography>
+                    </Box>
+                  </Box>
+                );
+              }}
             />
           </Box>
 
-          {/* Winner */}
+          {/* Winner — any team */}
           <Box sx={{ mb: 2.5 }}>
             <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(0,0,0,0.45)', mb: 0.85, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Tournament Winner</Typography>
             <Autocomplete
-              options={bonusFinalists}
+              options={['Chennai Super Kings','Mumbai Indians','Royal Challengers Bengaluru','Kolkata Knight Riders','Sunrisers Hyderabad','Rajasthan Royals','Delhi Capitals','Punjab Kings','Gujarat Titans','Lucknow Super Giants']}
               value={bonusWinner || null}
               onChange={(_, val) => setBonusWinner(val ?? '')}
               renderInput={(params) => <TextField {...params} placeholder="Select winner…" size="small" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px', fontSize: '0.82rem', fontWeight: 600, '& fieldset': { borderColor: 'rgba(0,0,0,0.12)' }, '&.Mui-focused fieldset': { borderColor: '#d97706', borderWidth: 1.5 } } }} />}
+              renderOption={(props, team) => {
+                const meta = getTeamMeta(team);
+                const { key, ...restProps } = props as { key?: React.Key } & React.HTMLAttributes<HTMLLIElement>;
+                return (
+                  <Box component="li" key={key} {...restProps} sx={{ py: 0.85, px: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 22, height: 22, borderRadius: '5px', background: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, p: '2px' }}>
+                        {meta.logo ? <img src={meta.logo} alt={team} style={{ width: 18, height: 18, objectFit: 'contain' }} /> : <Typography sx={{ fontSize: '0.45rem', fontWeight: 900, color: '#fff' }}>{team.slice(0,3).toUpperCase()}</Typography>}
+                      </Box>
+                      <Typography sx={{ fontWeight: 700, fontSize: '0.82rem' }}>{team}</Typography>
+                    </Box>
+                  </Box>
+                );
+              }}
             />
           </Box>
 

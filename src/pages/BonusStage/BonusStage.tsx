@@ -913,19 +913,19 @@ const BonusStage = () => {
                           <Td highlight={isMe} sticky left={36}>
                             <NameCell name={pred.display_name || 'Unknown'} />
                           </Td>
-                          <Td highlight={isMe} correct={topScorerCorrect}>
+                          <Td highlight={isMe} correct={!!topScorerCorrect}>
                             {pred.top_scorer ? <NameCell name={pred.top_scorer} /> : <EmptyCell />}
                           </Td>
-                          <Td highlight={isMe} correct={topWicketCorrect}>
+                          <Td highlight={isMe} correct={!!topWicketCorrect}>
                             {pred.top_wicket_taker ? <NameCell name={pred.top_wicket_taker} /> : <EmptyCell />}
                           </Td>
-                          <Td highlight={isMe} correct={pottCorrect}>
+                          <Td highlight={isMe} correct={!!pottCorrect}>
                             {pred.player_of_tournament ? <NameCell name={pred.player_of_tournament} /> : <EmptyCell />}
                           </Td>
-                          <Td highlight={isMe} correct={mostSixesCorrect}>
+                          <Td highlight={isMe} correct={!!mostSixesCorrect}>
                             {pred.most_sixes ? <NameCell name={pred.most_sixes} /> : <EmptyCell />}
                           </Td>
-                          <Td highlight={isMe} correct={mostFoursCorrect}>
+                          <Td highlight={isMe} correct={!!mostFoursCorrect}>
                             {pred.most_fours ? <NameCell name={pred.most_fours} /> : <EmptyCell />}
                           </Td>
                           <Td highlight={isMe} correct={qualifiersCount > 0}>
@@ -934,7 +934,7 @@ const BonusStage = () => {
                           <Td highlight={isMe} correct={finalistsCount > 0}>
                             {pred.finalists && pred.finalists.length > 0 ? <TeamsCell teams={pred.finalists} /> : <EmptyCell />}
                           </Td>
-                          <Td highlight={isMe} correct={winnerCorrect}>
+                          <Td highlight={isMe} correct={!!winnerCorrect}>
                             {pred.winner ? <WinnerCell team={pred.winner} /> : <EmptyCell />}
                           </Td>
                           <Td align="center" highlight={isMe}>

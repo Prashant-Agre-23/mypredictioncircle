@@ -79,7 +79,7 @@ const AdminPanel = () => {
       let mounted = true;
       const fetchName = async () => {
         if (!session?.user?.id) return;
-        const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).single();
+        const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).maybeSingle();
         if (!mounted) return;
         if (prof?.display_name) setDisplayName(prof.display_name);
         else {
@@ -128,6 +128,7 @@ const AdminPanel = () => {
   const [bonusFinalists, setBonusFinalists] = useState<string[]>([]);
   const [bonusWinner, setBonusWinner] = useState<string>('');
   const [bonusLocked, setBonusLocked] = useState(false);
+  const [bonusDeadline, setBonusDeadline] = useState<string>('');
   const [savingBonus, setSavingBonus] = useState(false);
   const [calculatingBonus, setCalculatingBonus] = useState(false);
   const [bonusResultId, setBonusResultId] = useState<number | null>(null);
@@ -174,6 +175,12 @@ const AdminPanel = () => {
         setBonusFinalists(br.finalists ?? []);
         setBonusWinner(br.winner ?? '');
         setBonusLocked(br.predictions_locked ?? false);
+        // Convert stored UTC timestamp to local datetime-local string for input
+        if (br.deadline) {
+          const d = new Date(br.deadline);
+          const pad = (n: number) => String(n).padStart(2, '0');
+          setBonusDeadline(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+        }
       }
 
       setLoading(false);
@@ -348,6 +355,7 @@ const AdminPanel = () => {
       finalists: bonusFinalists,
       winner: bonusWinner || null,
       predictions_locked: bonusLocked,
+      deadline: bonusDeadline ? new Date(bonusDeadline).toISOString() : null,
       updated_at: new Date().toISOString(),
     };
     let error;
@@ -864,6 +872,26 @@ const AdminPanel = () => {
             <Box sx={{ width: 36, height: 20, borderRadius: '10px', background: bonusLocked ? '#dc2626' : 'rgba(0,0,0,0.15)', position: 'relative', transition: 'background 0.2s' }}>
               <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: bonusLocked ? 18 : 2, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
             </Box>
+          </Box>
+
+          {/* Deadline picker */}
+          <Box sx={{ mb: 2 }}>
+            <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(0,0,0,0.45)', mb: 0.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Prediction Deadline (local time)
+            </Typography>
+            <TextField
+              type="datetime-local"
+              size="small"
+              fullWidth
+              value={bonusDeadline}
+              onChange={(e) => setBonusDeadline(e.target.value)}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px', fontSize: '0.8rem' } }}
+            />
+            {bonusDeadline && (
+              <Typography sx={{ fontSize: '0.62rem', color: 'rgba(0,0,0,0.35)', mt: 0.5 }}>
+                UTC: {new Date(bonusDeadline).toUTCString()}
+              </Typography>
+            )}
           </Box>
 
           {/* Player fields */}

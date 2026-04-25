@@ -37,8 +37,8 @@ const ALL_TEAMS = [
   'Lucknow Super Giants',
 ];
 
-// 26 April 2026 11:00 AM IST = 05:30 UTC
-const DEADLINE = new Date('2026-04-27T05:30:00Z');
+// Fallback deadline if none is set in DB
+const FALLBACK_DEADLINE = new Date('2026-04-26T05:30:00Z');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,6 +67,7 @@ interface UserBonusPrediction extends BonusPrediction {
 
 interface BonusResult {
   predictions_locked: boolean;
+  deadline: string | null;
   top_scorer: string | null;
   top_wicket_taker: string | null;
   player_of_tournament: string | null;
@@ -124,14 +125,14 @@ const abbr = (name?: string) => {
 
 const thBase: React.CSSProperties = { padding: '10px 14px', fontWeight: 800, fontSize: '0.63rem', color: '#fff', textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.07)', background: '#111' };
 
-const Th = ({ children, align = 'left', sticky = false }: { children: React.ReactNode; align?: 'left' | 'center'; sticky?: boolean }) => (
-  <th style={{ ...thBase, textAlign: align, ...(sticky ? { position: 'sticky', left: 0, zIndex: 2, boxShadow: '2px 0 4px rgba(0,0,0,0.06)' } : {}) }}>
+const Th = ({ children, align = 'left', sticky = false, left = 0 }: { children: React.ReactNode; align?: 'left' | 'center'; sticky?: boolean; left?: number }) => (
+  <th style={{ ...thBase, textAlign: align, ...(sticky ? { position: 'sticky', left, zIndex: 2, boxShadow: left > 0 ? '2px 0 4px rgba(0,0,0,0.06)' : undefined } : {}) }}>
     {children}
   </th>
 );
 
-const Td = ({ children, align = 'left', highlight = false, correct = false, sticky = false }: { children: React.ReactNode; align?: 'left' | 'center'; highlight?: boolean; correct?: boolean; sticky?: boolean }) => (
-  <td style={{ padding: '11px 14px', textAlign: align, verticalAlign: 'middle', background: correct ? '#f0fdf4' : (highlight ? '#fff' : '#fff'), ...(sticky ? { position: 'sticky', left: 0, zIndex: 1, boxShadow: '2px 0 4px rgba(0,0,0,0.06)', background: highlight ? '#fffbeb' : '#fff' } : {}), borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+const Td = ({ children, align = 'left', highlight = false, correct = false, sticky = false, left = 0 }: { children: React.ReactNode; align?: 'left' | 'center'; highlight?: boolean; correct?: boolean; sticky?: boolean; left?: number }) => (
+  <td style={{ padding: '11px 14px', textAlign: align, verticalAlign: 'middle', background: correct ? '#f0fdf4' : (highlight ? '#fffbeb' : '#fff'), ...(sticky ? { position: 'sticky', left, zIndex: 1, boxShadow: left > 0 ? '2px 0 4px rgba(0,0,0,0.06)' : undefined, background: correct ? '#f0fdf4' : highlight ? '#fffbeb' : '#fff' } : {}), borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
     {children}
   </td>
 );
@@ -433,13 +434,14 @@ const BonusStage = () => {
   const [semiFinalists, setSemiFinalists] = useState<string[]>([]);
   const [finalists, setFinalists] = useState<string[]>([]);
   const [winner, setWinner] = useState<string | null>(null);
+  const [deadline, setDeadline] = useState<Date>(FALLBACK_DEADLINE);
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; mins: number; secs: number } | null>(null);
   const [bonusResults, setBonusResults] = useState<BonusResult | null>(null);
   const [allPredictions, setAllPredictions] = useState<UserBonusPrediction[]>([]);
 
   useEffect(() => {
     const tick = () => {
-      const diff = DEADLINE.getTime() - Date.now();
+      const diff = deadline.getTime() - Date.now();
       if (diff <= 0) { setTimeLeft({ days: 0, hours: 0, mins: 0, secs: 0 }); return; }
       setTimeLeft({
         days: Math.floor(diff / 86400000),
@@ -451,7 +453,7 @@ const BonusStage = () => {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [deadline]);
 
   useEffect(() => {
     const load = async () => {
@@ -462,6 +464,7 @@ const BonusStage = () => {
       const br = resultData as BonusResult | null;
       setBonusResults(br);
       setLocked(br?.predictions_locked ?? false);
+      if (br?.deadline) setDeadline(new Date(br.deadline));
       if (session?.user?.id) {
         const { data: predData } = await supabase.from('bonus_predictions').select('*').eq('user_id', session.user.id).maybeSingle();
         if (predData) {
@@ -479,31 +482,28 @@ const BonusStage = () => {
         }
       }
 
-      // Fetch all users' predictions if deadline passed
-      const isPastDeadline = Date.now() >= DEADLINE.getTime();
-      if (isPastDeadline || br?.predictions_locked) {
-        const { data: allPredsData } = await supabase
-          .from('bonus_predictions')
-          .select('*')
-          .order('created_at', { ascending: true });
+      // Fetch all users' predictions (RLS policy allows this after deadline/lock)
+      const { data: allPredsData } = await supabase
+        .from('bonus_predictions')
+        .select('*')
+        .order('created_at', { ascending: true });
 
-        if (allPredsData && allPredsData.length > 0) {
-          // Fetch user display names from leaderboard
-          const { data: usersData } = await supabase
-            .from('leaderboard')
-            .select('user_id, display_name, email');
+      if (allPredsData && allPredsData.length > 0) {
+        // Fetch user display names from leaderboard
+        const { data: usersData } = await supabase
+          .from('leaderboard')
+          .select('user_id, display_name, email');
 
-          const userMap = new Map(
-            (usersData || []).map((u: any) => [u.user_id, u.display_name || u.email?.split('@')[0] || 'Unknown'])
-          );
+        const userMap = new Map(
+          (usersData || []).map((u: any) => [u.user_id, u.display_name || u.email?.split('@')[0] || 'Unknown'])
+        );
 
-          const enriched = allPredsData.map((pred: any) => ({
-            ...pred,
-            display_name: userMap.get(pred.user_id) || pred.user_id,
-          }));
+        const enriched = allPredsData.map((pred: any) => ({
+          ...pred,
+          display_name: userMap.get(pred.user_id) || pred.user_id,
+        }));
 
-          setAllPredictions(enriched as UserBonusPrediction[]);
-        }
+        setAllPredictions(enriched as UserBonusPrediction[]);
       }
 
       setLoading(false);
@@ -553,7 +553,7 @@ const BonusStage = () => {
     }
   };
 
-  const isPastDeadline = Date.now() >= DEADLINE.getTime();
+  const isPastDeadline = Date.now() >= deadline.getTime();
   const effectiveLocked = locked || isPastDeadline;
 
   const toggleSemiFinalist = (team: string) => setSemiFinalists((prev) => prev.includes(team) ? prev.filter((t) => t !== team) : prev.length < 4 ? [...prev, team] : prev);
@@ -867,8 +867,8 @@ const BonusStage = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
                   <thead>
                     <tr style={{ borderRadius: '12px 12px 0 0' }}>
-                      <Th sticky>#</Th>
-                      <Th sticky>Player</Th>
+                      <Th sticky left={0}>#</Th>
+                      <Th sticky left={36}>Player</Th>
                       <Th>Top Scorer</Th>
                       <Th>Top Wickets</Th>
                       <Th>POTT</Th>
@@ -881,7 +881,9 @@ const BonusStage = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {allPredictions.map((pred, idx) => {
+                    {[...allPredictions].sort((a, b) =>
+                      a.user_id === session?.user?.id ? -1 : b.user_id === session?.user?.id ? 1 : 0
+                    ).map((pred, idx) => {
                       const isMe = pred.user_id === session?.user?.id;
                       
                       // Check correct answers
@@ -905,10 +907,10 @@ const BonusStage = () => {
                       
                       return (
                         <tr key={pred.user_id}>
-                          <Td highlight={isMe} sticky>
-                            <Typography sx={{ fontWeight: 700, fontSize: '0.72rem', color: 'rgba(0,0,0,0.3)' }}>{idx + 1}</Typography>
+                          <Td highlight={isMe} sticky left={0}>
+                            <Typography sx={{ fontWeight: 700, fontSize: '0.72rem', color: 'rgba(0,0,0,0.3)', minWidth: 20, textAlign: 'center' }}>{idx + 1}</Typography>
                           </Td>
-                          <Td highlight={isMe} sticky>
+                          <Td highlight={isMe} sticky left={36}>
                             <NameCell name={pred.display_name || 'Unknown'} />
                           </Td>
                           <Td highlight={isMe} correct={topScorerCorrect}>

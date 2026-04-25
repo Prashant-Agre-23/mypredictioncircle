@@ -276,7 +276,7 @@ const Prediction = () => {
     let mounted = true;
     const fetchDisplayName = async () => {
       if (!session?.user?.id) return;
-      const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).single();
+      const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).maybeSingle();
       if (!mounted) return;
       if (prof?.display_name) { setDisplayName(prof.display_name); return; }
       const { data: lb } = await supabase.from('leaderboard').select('display_name').eq('user_id', session.user.id).single();

@@ -70,7 +70,7 @@ const Navbar = () => {
     const fetchName = async () => {
       if (!session?.user?.id) return;
       // Try profiles first
-      const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).single();
+      const { data: prof } = await supabase.from('profiles').select('display_name').eq('id', session.user.id).maybeSingle();
       if (!mounted) return;
       if (prof?.display_name) {
         setDisplayName(prof.display_name);

@@ -252,6 +252,7 @@ const Leaderboard = () => {
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [matchBreakdown, setMatchBreakdown] = useState<Record<string, MatchPoints[]>>({});
   const [dtCountMap, setDtCountMap] = useState<Record<string, number>>({});
+  const [activeStage, setActiveStage] = useState<number>(2); // Store current active stage (1, 2, or 3)
   const [topTodayUsers, setTopTodayUsers] = useState<TodayTopUser[]>([]);
   const [topTodayPoints, setTopTodayPoints] = useState<number | null>(null);
   const [todayMatchResults, setTodayMatchResults] = useState<TodayMatchResult[]>([]);
@@ -463,6 +464,17 @@ const Leaderboard = () => {
         return 90;
       };
 
+      const getStage = (matchNumber: number) => {
+        if (matchNumber <= 35) return 1;
+        if (matchNumber <= 70) return 2;
+        return 3;
+      };
+
+      // Determine current active stage based on highest match_number graded
+      const maxMatchNumber = Math.max(...sortedCas.map(ca => ca.match_number ?? 0), 0);
+      const currentActiveStage = maxMatchNumber === 0 ? 1 : getStage(maxMatchNumber);
+      setActiveStage(currentActiveStage);
+
       const map: Record<string, {
         dtCount: number; streak: number; fiferCount: number;
         matchStreaks: Record<number, MatchStreakInfo>;
@@ -486,7 +498,7 @@ const Leaderboard = () => {
             washoutMatchIds.add(ca.match_id);
             const p = userPredMap.get(ca.match_id);
             if (!p) { missedMatchIds.add(ca.match_id); missedPenalty += stagePoints(ca.match_number ?? 0); }
-            else if (p.is_double_trouble) dtCount++;
+            else if (p.is_double_trouble && getStage(ca.match_number ?? 0) === currentActiveStage) dtCount++;
             matchStreaks[ca.match_id] = { streakAtMatch: streak, fiferJustEarned: false, winnerCorrect: null };
             continue;
           }
@@ -498,7 +510,7 @@ const Leaderboard = () => {
             matchStreaks[ca.match_id] = { streakAtMatch: 0, fiferJustEarned: false, winnerCorrect: null };
             continue;
           }
-          if (p.is_double_trouble) dtCount++;
+          if (p.is_double_trouble && getStage(ca.match_number ?? 0) === currentActiveStage) dtCount++;
           const winnerCorrect = !!ca.winner && p.predicted_winner === ca.winner;
           const batterCorrect = !!ca.batter_id && p.predicted_batter_id !== null && Number(p.predicted_batter_id) === ca.batter_id;
           const bowlerCorrect = !!ca.bowler_id && p.predicted_bowler_id !== null && Number(p.predicted_bowler_id) === ca.bowler_id;
@@ -1443,14 +1455,16 @@ const Leaderboard = () => {
                       </Box>
                     </Box>
 
-                    {/* DT count */}
+                    {/* DT remaining */}
                     {(() => {
-                      const dt = row.user_id in dtCountMap ? dtCountMap[row.user_id] : (statsMap[row.user_id]?.dtCount ?? 0);
+                      const dtUsed = row.user_id in dtCountMap ? dtCountMap[row.user_id] : (statsMap[row.user_id]?.dtCount ?? 0);
+                      const dtQuota = activeStage === 3 ? 2 : 7; // Stage 3 has 2 DTs, stages 1 & 2 have 7 DTs
+                      const dtRemaining = dtQuota - dtUsed;
                       return (
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {dt > 0 ? (
+                          {dtRemaining > 0 ? (
                             <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3, px: 0.7, py: 0.25, borderRadius: '6px', background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.4)' }}>
-                              <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#d97706' }}>⚡{dt}</Typography>
+                              <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: '#d97706' }}>⚡{dtRemaining}</Typography>
                             </Box>
                           ) : (
                             <Typography sx={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.2)', fontWeight: 600 }}>—</Typography>

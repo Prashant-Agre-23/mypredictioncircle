@@ -638,6 +638,9 @@ const Leaderboard = () => {
 
     // ── Compute stats for this user (streak, fifer, DT, missed penalty) ──────
     const stagePoints = (mn: number) => { if (mn <= 35) return 50; if (mn <= 70) return 70; return 90; };
+    const getStageLocal = (mn: number) => { if (mn <= 35) return 1; if (mn <= 70) return 2; return 3; };
+    const maxMn = Math.max(...allCaRows.map(ca => ca.match_number ?? 0), 0);
+    const currentStageLocal = maxMn === 0 ? 1 : getStageLocal(maxMn);
     let dtCount = 0, streak = 0, fiferCount = 0, missedPenalty = 0;
     const matchStreaks: Record<number, MatchStreakInfo> = {};
     const perfectMatchIds = new Set<number>();
@@ -650,7 +653,7 @@ const Leaderboard = () => {
         washoutMatchIds.add(ca.match_id);
         const p = predByMatchId.get(ca.match_id);
         if (!p) { missedMatchIds.add(ca.match_id); missedPenalty += stagePoints(ca.match_number ?? 0); }
-        else if (p.is_double_trouble) dtCount++;
+        else if (p.is_double_trouble && getStageLocal(ca.match_number ?? 0) === currentStageLocal) dtCount++;
         matchStreaks[ca.match_id] = { streakAtMatch: streak, fiferJustEarned: false, winnerCorrect: null };
         continue;
       }
@@ -662,7 +665,7 @@ const Leaderboard = () => {
         matchStreaks[ca.match_id] = { streakAtMatch: 0, fiferJustEarned: false, winnerCorrect: null };
         continue;
       }
-      if (p.is_double_trouble) dtCount++;
+      if (p.is_double_trouble && getStageLocal(ca.match_number ?? 0) === currentStageLocal) dtCount++;
       const winnerOk = !!ca.winner && p.predicted_winner === ca.winner;
       const batterOk = !!ca.batter_id && p.predicted_batter_id !== null && Number(p.predicted_batter_id) === ca.batter_id;
       const bowlerOk = !!ca.bowler_id && p.predicted_bowler_id !== null && Number(p.predicted_bowler_id) === ca.bowler_id;

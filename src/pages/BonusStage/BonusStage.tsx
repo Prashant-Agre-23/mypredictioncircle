@@ -38,7 +38,7 @@ const ALL_TEAMS = [
 ];
 
 // Fallback deadline if none is set in DB
-const FALLBACK_DEADLINE = new Date('2026-04-26T05:30:00Z');
+const FALLBACK_DEADLINE = new Date('2026-04-27T05:30:00Z');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

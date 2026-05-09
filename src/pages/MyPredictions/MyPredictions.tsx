@@ -159,6 +159,7 @@ const MyPredictions = () => {
   const [expandedMatch, setExpandedMatch] = useState<string | number | null>(null);
   const [correctAnswers, setCorrectAnswers] = useState<CorrectAnswer[]>([]);
   const [allUsers, setAllUsers] = useState<{ user_id: string; display_name: string }[]>([]);
+  const [playerNameMap, setPlayerNameMap] = useState<Record<number, string>>({});
 
   useEffect(() => {
     const fetchData = async () => {
@@ -243,7 +244,22 @@ const MyPredictions = () => {
         .from('correct_answers')
         .select('match_id, winner, batter_id, bowler_id, mom_id, is_washout')
         .in('match_id', matchIds);
-      setCorrectAnswers((caData || []) as CorrectAnswer[]);
+      const caRows = (caData || []) as CorrectAnswer[];
+      setCorrectAnswers(caRows);
+
+      // Fetch player names for correct answer display
+      const playerIds = [...new Set(
+        caRows.flatMap((c) => [c.batter_id, c.bowler_id, c.mom_id].filter((id): id is number => id != null))
+      )];
+      if (playerIds.length > 0) {
+        const { data: playerData } = await supabase
+          .from('players')
+          .select('id, name')
+          .in('id', playerIds);
+        const map: Record<number, string> = {};
+        (playerData || []).forEach((pl: { id: number; name: string }) => { map[pl.id] = pl.name; });
+        setPlayerNameMap(map);
+      }
 
       setLoading(false);
     };
@@ -528,6 +544,34 @@ const MyPredictions = () => {
   };
   const bannerData = buildBannerData();
 
+  // ── Derived stats for scorecard strip, timeline, streak ──────────────────
+  const myPredsByMatch = groups.map((g) => ({
+    match: g.match,
+    pred: g.predictions.find((p) => p.user_id === session?.user?.id) ?? null,
+    ca: getCorrectAnswer(g.match.id),
+  }));
+
+  const streakInfo = (() => {
+    let streak = 0;
+    let type: 'win' | 'loss' | null = null;
+    for (const { pred, ca } of myPredsByMatch) {
+      if (!pred || !ca) break;
+      const wOk = isFieldCorrect(pred, ca, 'winner');
+      if (type === null) { type = wOk ? 'win' : 'loss'; streak = 1; }
+      else if ((type === 'win') === wOk) streak++;
+      else break;
+    }
+    return { streak, type };
+  })();
+
+  const timelineData = [...myPredsByMatch]
+    .reverse()
+    .filter(({ pred, ca }) => pred !== null && ca !== null)
+    .map(({ match, pred, ca }) => ({
+      matchNum: match.match_number,
+      pts: calcPoints(pred!, ca!, match.match_number) ?? 0,
+    }));
+
   return (
     <Box sx={{ minHeight: '100vh', background: '#f5f5f7', pb: 6 }}>
       <Navbar />
@@ -556,6 +600,107 @@ const MyPredictions = () => {
           </Box>
         </Container>
       </Box>
+
+      {/* ── Points Timeline ── */}
+      {timelineData.length > 1 && (() => {
+        // Latest match first
+        const reversed = [...timelineData].reverse();
+        const maxAbs = Math.max(...reversed.map((d) => Math.abs(d.pts)), 1);
+        const totalPts = reversed.reduce((s, d) => s + d.pts, 0);
+        const wins = reversed.filter((d) => d.pts > 0).length;
+        return (
+          <Box sx={{
+            background: 'linear-gradient(160deg, #0d0d12 0%, #131320 100%)',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            px: 2, pt: 1.8, pb: 2,
+          }}>
+            <Container maxWidth="md" disableGutters>
+              {/* Header row */}
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.8 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ width: 3, height: 14, borderRadius: '2px', background: 'linear-gradient(180deg, #a78bfa, #6366f1)' }} />
+                  <Typography sx={{ fontSize: '0.58rem', fontWeight: 800, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+                    Form · Last {reversed.length} Matches
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ px: 1, py: 0.25, borderRadius: '6px', background: wins > reversed.length / 2 ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)', border: `1px solid ${wins > reversed.length / 2 ? 'rgba(74,222,128,0.25)' : 'rgba(248,113,113,0.25)'}` }}>
+                    <Typography sx={{ fontSize: '0.52rem', fontWeight: 800, color: wins > reversed.length / 2 ? '#4ade80' : '#f87171', letterSpacing: '0.04em' }}>
+                      {wins}W · {reversed.length - wins}L
+                    </Typography>
+                  </Box>
+                  <Box sx={{ px: 1, py: 0.25, borderRadius: '6px', background: totalPts >= 0 ? 'rgba(99,102,241,0.15)' : 'rgba(248,113,113,0.1)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, color: totalPts >= 0 ? '#a78bfa' : '#f87171' }}>
+                      {totalPts > 0 ? `+${totalPts}` : totalPts} pts
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* Bar chart */}
+              <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: '5px', height: 72, position: 'relative' }}>
+                {reversed.map(({ matchNum, pts }, i) => {
+                  const isLatest = i === 0;
+                  const barH = Math.max(6, Math.round((Math.abs(pts) / maxAbs) * 52));
+                  const isPos = pts > 0;
+                  const isZero = pts === 0;
+                  const barColor = isZero ? 'rgba(255,255,255,0.1)' : isPos ? '#1db954' : '#e8334a';
+                  const glowColor = isPos ? 'rgba(29,185,84,0.5)' : 'rgba(232,51,74,0.5)';
+                  return (
+                    <Box key={i} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', position: 'relative' }}>
+                      {/* Pts label */}
+                      <Typography sx={{
+                        fontSize: isLatest ? '0.52rem' : '0.44rem',
+                        fontWeight: 900,
+                        color: isZero ? 'rgba(255,255,255,0.2)' : isPos ? '#4edd80' : '#ff6b7a',
+                        lineHeight: 1,
+                        letterSpacing: '-0.01em',
+                      }}>
+                        {pts > 0 ? `+${pts}` : pts === 0 ? '·' : pts}
+                      </Typography>
+
+                      {/* Bar */}
+                      <Box sx={{
+                        width: '100%',
+                        height: `${barH}px`,
+                        borderRadius: '5px 5px 2px 2px',
+                        background: barColor,
+                        boxShadow: isLatest && !isZero ? `0 0 10px ${glowColor}, 0 0 20px ${glowColor}` : 'none',
+                        border: isLatest ? `1px solid ${isPos ? 'rgba(29,185,84,0.7)' : 'rgba(232,51,74,0.7)'}` : '1px solid transparent',
+                        transition: 'height 0.5s cubic-bezier(0.34,1.56,0.64,1)',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        '&::after': isLatest ? {
+                          content: '""', position: 'absolute', top: 0, left: 0, right: 0, height: '40%',
+                          background: 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, transparent 100%)',
+                          borderRadius: '5px 5px 0 0',
+                        } : {},
+                      }} />
+
+                      {/* Match label */}
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
+                        {isLatest && (
+                          <Box sx={{ px: 0.6, py: 0.15, borderRadius: '4px', background: 'linear-gradient(90deg, #6366f1, #8b5cf6)', mb: '1px' }}>
+                            <Typography sx={{ fontSize: '0.34rem', fontWeight: 900, color: '#fff', letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1 }}>NEW</Typography>
+                          </Box>
+                        )}
+                        <Typography sx={{
+                          fontSize: '0.42rem',
+                          fontWeight: isLatest ? 900 : 600,
+                          color: `${isLatest ? '#ffffff' : 'rgba(255,255,255,0.55)'} !important`,
+                          lineHeight: 1,
+                        }}>
+                          M{matchNum}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Container>
+          </Box>
+        );
+      })()}
 
       {/* ── Results Banner for latest match ── */}
       {bannerData && latestGroup && (() => {
@@ -829,11 +974,50 @@ const MyPredictions = () => {
                                     </Typography>
                                   </td>
                                 </tr>
+                                {/* Correct Answer row — shown only when graded */}
+                                {ca && (() => {
+                                  const caWinner = ca.winner ?? null;
+                                  const caBatter = ca.batter_id ? (playerNameMap[ca.batter_id] ?? null) : null;
+                                  const caBowler = ca.bowler_id ? (playerNameMap[ca.bowler_id] ?? null) : null;
+                                  const caMom = ca.mom_id ? (playerNameMap[ca.mom_id] ?? null) : null;
+                                  const caWinnerMeta = caWinner ? getTeamMeta(caWinner) : null;
+                                  const CaCell = ({ val, isWinner = false }: { val: string | null; isWinner?: boolean }) => (
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                      {isWinner && caWinnerMeta && (
+                                        <Box sx={{ width: 16, height: 16, borderRadius: '4px', background: caWinnerMeta.color, display: 'flex', alignItems: 'center', justifyContent: 'center', p: '2px', flexShrink: 0 }}>
+                                          {caWinnerMeta.logo && <img src={caWinnerMeta.logo} alt={val!} style={{ width: 12, height: 12, objectFit: 'contain' }} />}
+                                        </Box>
+                                      )}
+                                      <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, color: val ? '#15803d' : 'rgba(0,0,0,0.2)', whiteSpace: 'nowrap' }}>
+                                        {val ? (isWinner ? abbr(val) : val) : '—'}
+                                      </Typography>
+                                    </Box>
+                                  );
+                                  return (
+                                    <tr style={{ borderBottom: '2px solid rgba(22,163,74,0.2)', background: 'rgba(240,253,244,0.8)' }}>
+                                      <td style={{ padding: '7px 0 7px 0', verticalAlign: 'middle', borderLeft: '3px solid #16a34a' }}>
+                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: '#16a34a', textAlign: 'center' }}>✓</Typography>
+                                      </td>
+                                      <td style={{ padding: '7px 14px', background: 'rgba(220,252,231,0.9)', position: 'sticky', left: 0, zIndex: 1, boxShadow: '2px 0 4px rgba(0,0,0,0.06)', verticalAlign: 'middle' }}>
+                                        <Typography sx={{ fontSize: '0.65rem', fontWeight: 900, color: '#15803d', whiteSpace: 'nowrap' }}>✅ Correct Ans</Typography>
+                                      </td>
+                                      <td style={{ padding: '7px 14px', verticalAlign: 'middle' }}><CaCell val={caWinner} isWinner /></td>
+                                      <td style={{ padding: '7px 14px', verticalAlign: 'middle' }}><CaCell val={caBatter} /></td>
+                                      <td style={{ padding: '7px 14px', verticalAlign: 'middle' }}><CaCell val={caBowler} /></td>
+                                      <td style={{ padding: '7px 14px', verticalAlign: 'middle' }}><CaCell val={caMom} /></td>
+                                      {[0,1,2].map((i) => <td key={i} style={{ padding: '7px 14px', textAlign: 'center', verticalAlign: 'middle' }}><Typography sx={{ fontSize: '0.7rem', color: 'rgba(22,163,74,0.3)' }}>—</Typography></td>)}
+                                    </tr>
+                                  );
+                                })()}
                               </>
                             );
                           })()}
                           {/* ─── Predicted rows ─── */}
-                          {predictions.map((pred, idx) => {
+                          {[...predictions].sort((a, b) => {
+                            const aMe = a.user_id === session?.user?.id ? -1 : 0;
+                            const bMe = b.user_id === session?.user?.id ? -1 : 0;
+                            return aMe - bMe;
+                          }).map((pred, idx) => {
                             const isMe = pred.user_id === session?.user?.id;
                             const ca = getCorrectAnswer(match.id);
                             const pts = calcPoints(pred, ca, match.match_number);
@@ -842,13 +1026,16 @@ const MyPredictions = () => {
                             const bowlerCorrect = isFieldCorrect(pred, ca, 'bowler');
                             const momCorrect = isFieldCorrect(pred, ca, 'mom');
                             const isPerfectMatch = winnerCorrect && batterCorrect && bowlerCorrect && momCorrect;
+                            // Row accent color based on grading
+                            const accentColor = !ca ? 'transparent' : winnerCorrect ? '#16a34a' : '#dc2626';
+                            const rowBg = isPerfectMatch ? 'rgba(167,139,250,0.06)' : undefined;
                             return (
-                              <tr key={pred.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', background: isPerfectMatch ? 'rgba(167,139,250,0.06)' : undefined }}>
+                              <tr key={pred.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', background: rowBg }}>
 
                                 {/* # */}
-                                <Td highlight={isMe}>
-                                  <Typography sx={{ fontWeight: 700, fontSize: '0.72rem', color: 'rgba(0,0,0,0.3)' }}>{idx + 1}</Typography>
-                                </Td>
+                                <td style={{ padding: '11px 0 11px 0', textAlign: 'left', verticalAlign: 'middle', background: rowBg ?? (ca && winnerCorrect ? 'rgba(240,253,244,0.5)' : ca ? 'rgba(254,242,242,0.4)' : '#fff'), borderLeft: `3px solid ${accentColor}` }}>
+                                  <Typography sx={{ fontWeight: 700, fontSize: '0.72rem', color: 'rgba(0,0,0,0.3)', textAlign: 'center' }}>{idx + 1}</Typography>
+                                </td>
 
                                 {/* Name — sticky */}
                                 <Td highlight={isMe} sticky>
@@ -860,6 +1047,12 @@ const MyPredictions = () => {
                                         </Typography>
                                         {isMe && (
                                           <Chip label="You" size="small" sx={{ height: 16, fontSize: '0.52rem', fontWeight: 800, background: '#000', color: '#fff', borderRadius: '4px', '& .MuiChip-label': { px: 0.6 } }} />
+                                        )}
+                                        {isMe && streakInfo.streak >= 2 && (
+                                          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.2, px: 0.55, py: 0.15, borderRadius: '5px', background: streakInfo.type === 'win' ? 'rgba(239,68,68,0.1)' : 'rgba(59,130,246,0.1)', border: `1px solid ${streakInfo.type === 'win' ? 'rgba(239,68,68,0.25)' : 'rgba(59,130,246,0.25)'}` }}>
+                                            <Typography sx={{ fontSize: '0.48rem', lineHeight: 1 }}>{streakInfo.type === 'win' ? '🔥' : '❄️'}</Typography>
+                                            <Typography sx={{ fontSize: '0.52rem', fontWeight: 900, color: streakInfo.type === 'win' ? '#dc2626' : '#2563eb', lineHeight: 1 }}>{streakInfo.streak}{streakInfo.type === 'win' ? 'W' : 'L'}</Typography>
+                                          </Box>
                                         )}
                                       </Box>
                                     </Box>

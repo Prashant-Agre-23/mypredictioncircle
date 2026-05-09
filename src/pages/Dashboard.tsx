@@ -149,13 +149,23 @@ const Dashboard: React.FC = () => {
           ],
         };
 
-        // Date + userId based seed — same message all day, unique per user, no repeat for 33 days
+        // Seeded shuffle — unique message per day, no repeats until all messages shown
         const today = new Date();
         const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / 86400000);
         const userSeed = session.user.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
         const pool = messages[tier];
-        const idx = (dayOfYear + userSeed) % pool.length;
-        setToastMsg(pool[idx]);
+        // Which cycle we're in (0, 1, 2, …) — changes after every pool.length days
+        const cycle = Math.floor(dayOfYear / pool.length);
+        // Deterministic LCG seeded per user + year + cycle so shuffle differs each cycle & user
+        const lcgSeed = userSeed + today.getFullYear() * 10000 + cycle * 97;
+        const lcg = (() => { let s = lcgSeed; return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; }; })();
+        const shuffled = [...pool];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(lcg() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        const idx = dayOfYear % pool.length;
+        setToastMsg(shuffled[idx]);
         setShowToast(true);
         setTimeout(() => setShowToast(false), 6500);
       }
@@ -170,7 +180,7 @@ const Dashboard: React.FC = () => {
       {toastMsg && (
       <Box sx={{
         position: 'fixed',
-        top: { xs: '68px', sm: '76px' },
+        bottom: { xs: '24px', sm: '32px' },
         left: '50%',
         transform: 'translateX(-50%)',
         width: { xs: 'calc(100% - 32px)', sm: 'auto' },
@@ -178,12 +188,12 @@ const Dashboard: React.FC = () => {
         zIndex: 9999, pointerEvents: 'none',
         animation: showToast ? 'toastIn 0.45s cubic-bezier(0.22,1,0.36,1) forwards' : 'toastOut 0.35s ease forwards',
         '@keyframes toastIn': {
-          '0%': { opacity: 0, transform: 'translateX(-50%) translateY(-14px) scale(0.95)' },
+          '0%': { opacity: 0, transform: 'translateX(-50%) translateY(14px) scale(0.95)' },
           '100%': { opacity: 1, transform: 'translateX(-50%) translateY(0) scale(1)' },
         },
         '@keyframes toastOut': {
           '0%': { opacity: 1, transform: 'translateX(-50%) translateY(0) scale(1)' },
-          '100%': { opacity: 0, transform: 'translateX(-50%) translateY(-10px) scale(0.95)' },
+          '100%': { opacity: 0, transform: 'translateX(-50%) translateY(10px) scale(0.95)' },
         },
       }}>
         <Box sx={{

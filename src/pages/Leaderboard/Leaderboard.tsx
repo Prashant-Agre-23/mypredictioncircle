@@ -258,6 +258,8 @@ const Leaderboard = () => {
   const [todayMatchResults, setTodayMatchResults] = useState<TodayMatchResult[]>([]);
   const [celebrationState, setCelebrationState] = useState<'win' | 'loss' | 'washout' | 'missed' | null>(null);
   const [nextMatchStartUtc, setNextMatchStartUtc] = useState<string | null>(null);
+  const [latestMatchPtsMap, setLatestMatchPtsMap] = useState<Record<string, number>>({});
+
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
@@ -403,6 +405,14 @@ const Leaderboard = () => {
         const uniqueScoredMatchIds = new Set<number>();
         const pointsByUser = new Map<string, number>();
 
+        // Build per-user latest match pts map for rank delta
+        const latestPtsPerUser: Record<string, number> = {};
+        todayRows.forEach((row) => {
+          if (row.points === null) return;
+          latestPtsPerUser[row.user_id] = (latestPtsPerUser[row.user_id] ?? 0) + Number(row.points);
+        });
+        setLatestMatchPtsMap(latestPtsPerUser);
+
         todayRows.forEach((row) => {
           if (row.points === null) return;
           uniqueScoredMatchIds.add(Number(row.match_id));
@@ -536,6 +546,7 @@ const Leaderboard = () => {
       const dtMap: Record<string, number> = {};
       for (const [uid, s] of Object.entries(map)) dtMap[uid] = s.dtCount;
       setDtCountMap(dtMap);
+
       setLoading(false);
     };
     fetchLeaderboard();
@@ -553,9 +564,9 @@ const Leaderboard = () => {
   const rankMap = useMemo(() => {
     const map: Record<string, number> = {};
     let rank = 1;
+    const effectivePoints = (r: typeof sorted[0]) =>
+      r.total_points + (r.bonus_points ?? 0) + (statsMap[r.user_id]?.fiferCount ?? 0) * 100 - (statsMap[r.user_id]?.missedPenalty ?? 0);
     for (let i = 0; i < sorted.length; i++) {
-      const effectivePoints = (pts: typeof sorted[0]) =>
-        pts.total_points + (pts.bonus_points ?? 0) + (statsMap[pts.user_id]?.fiferCount ?? 0) * 100 - (statsMap[pts.user_id]?.missedPenalty ?? 0);
       if (i === 0) {
         map[sorted[i].user_id] = 1;
       } else {
@@ -569,6 +580,33 @@ const Leaderboard = () => {
     }
     return map;
   }, [sorted, statsMap]);
+
+  // Rank delta: how many spots each user moved after the latest graded match
+  const rankDeltaMap = useMemo(() => {
+    if (Object.keys(latestMatchPtsMap).length === 0) return {} as Record<string, number>;
+    const effectivePts = (r: typeof sorted[0]) =>
+      r.total_points + (r.bonus_points ?? 0) + (statsMap[r.user_id]?.fiferCount ?? 0) * 100 - (statsMap[r.user_id]?.missedPenalty ?? 0);
+    const preSorted = [...sorted].sort((a, b) =>
+      (effectivePts(b) - (latestMatchPtsMap[b.user_id] ?? 0)) - (effectivePts(a) - (latestMatchPtsMap[a.user_id] ?? 0))
+    );
+    const prevRankMap: Record<string, number> = {};
+    let prevRank = 1;
+    for (let i = 0; i < preSorted.length; i++) {
+      const aPre = effectivePts(preSorted[i]) - (latestMatchPtsMap[preSorted[i].user_id] ?? 0);
+      if (i === 0) { prevRankMap[preSorted[i].user_id] = 1; }
+      else {
+        const bPre = effectivePts(preSorted[i - 1]) - (latestMatchPtsMap[preSorted[i - 1].user_id] ?? 0);
+        if (aPre === bPre) prevRankMap[preSorted[i].user_id] = prevRankMap[preSorted[i - 1].user_id];
+        else { prevRank = i + 1; prevRankMap[preSorted[i].user_id] = prevRank; }
+      }
+    }
+    const delta: Record<string, number> = {};
+    for (const r of sorted) {
+      const prev = prevRankMap[r.user_id] ?? rankMap[r.user_id];
+      delta[r.user_id] = prev - (rankMap[r.user_id] ?? prev);
+    }
+    return delta;
+  }, [sorted, statsMap, latestMatchPtsMap, rankMap]);
 
   // Fetch per-match breakdown lazily when accordion opens
   const handleToggleRow = async (userId: string) => {
@@ -929,37 +967,90 @@ const Leaderboard = () => {
       })()}
 
       {/* ── Header ────────────────────────────────────────── */}
-      <Box
-        sx={{
-          background: '#000',
-          pt: 3.5,
-          pb: 4,
-          px: 2,
-        }}
-      >
+      <Box sx={{ px: { xs: 1.5, sm: 2 }, pt: 2.5, pb: 1.5, background: '#f5f5f7' }}>
         <Container maxWidth="md" disableGutters>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75 }}>
-            <Box
-              sx={{
-                width: 52,
-                height: 52,
-                borderRadius: '16px',
-                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 8px 28px rgba(245,158,11,0.45)',
-                mb: 0.5,
-              }}
-            >
-              <EmojiEventsIcon sx={{ fontSize: '1.65rem', color: '#fff' }} />
+          <Box
+            sx={{
+              borderRadius: '24px',
+              overflow: 'hidden',
+              position: 'relative',
+              background: 'linear-gradient(145deg, #020617 0%, #0f172a 55%, #1e1b4b 100%)',
+              boxShadow: '0 16px 48px rgba(2,6,23,0.45), 0 1px 0 rgba(255,255,255,0.05) inset',
+              '&::before': {
+                content: '""', position: 'absolute', inset: 0,
+                background: `repeating-linear-gradient(-55deg, transparent, transparent 32px, rgba(255,255,255,0.015) 32px, rgba(255,255,255,0.015) 33px)`,
+                pointerEvents: 'none',
+              },
+            }}
+          >
+            {/* Violet-to-gold shimmer top bar */}
+            <Box sx={{ height: '3px', background: 'linear-gradient(90deg, #7c3aed, #f59e0b, #7c3aed)', backgroundSize: '200% 100%', animation: 'hdrSlide 3.5s linear infinite', '@keyframes hdrSlide': { '0%': { backgroundPosition: '0% 0%' }, '100%': { backgroundPosition: '200% 0%' } } }} />
+
+            <Box sx={{ px: { xs: 2, sm: 3 }, pt: 2, pb: 2.2 }}>
+              {/* Top row: trophy + title + live dot */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.8, mb: 2 }}>
+                <Box sx={{
+                  flexShrink: 0, width: 48, height: 48, borderRadius: '15px',
+                  background: 'linear-gradient(145deg, #f59e0b, #b45309)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 6px 20px rgba(245,158,11,0.45)',
+                }}>
+                  <EmojiEventsIcon sx={{ fontSize: '1.6rem', color: '#fff' }} />
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, mb: 0.25 }}>
+                    <Typography sx={{ fontWeight: 900, fontSize: { xs: '1.35rem', sm: '1.5rem' }, color: '#fff', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                      Leaderboard
+                    </Typography>
+                    <Box sx={{ px: 0.8, py: 0.2, borderRadius: '6px', background: 'rgba(124,58,237,0.25)', border: '1px solid rgba(139,92,246,0.45)', flexShrink: 0 }}>
+                      <Typography sx={{ fontSize: '0.56rem', fontWeight: 900, color: '#a78bfa', letterSpacing: '0.08em', textTransform: 'uppercase' }}>IPL 2026</Typography>
+                    </Box>
+                  </Box>
+                  <Typography sx={{ fontSize: '0.66rem', color: 'rgba(255,255,255,0.32)', fontWeight: 600, letterSpacing: '0.03em' }}>
+                    Season rankings · All matches
+                  </Typography>
+                </Box>
+                {/* Live indicator */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.9, py: 0.4, borderRadius: '8px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', flexShrink: 0 }}>
+                  <Box sx={{ width: 5, height: 5, borderRadius: '50%', background: '#4ade80', animation: 'liveDot 1.6s ease-in-out infinite', '@keyframes liveDot': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.3 } } }} />
+                  <Typography sx={{ fontSize: '0.56rem', fontWeight: 800, color: '#4ade80', letterSpacing: '0.06em' }}>LIVE</Typography>
+                </Box>
+              </Box>
+
+              {/* Stats grid — 4 blocks */}
+              {!loading && sorted.length > 0 && (() => {
+                // Leader info
+                const leader = sorted[0];
+                const leaderPts = leader
+                  ? leader.total_points + (leader.bonus_points ?? 0) + (statsMap[leader.user_id]?.fiferCount ?? 0) * 100 - (statsMap[leader.user_id]?.missedPenalty ?? 0)
+                  : 0;
+                const leaderName = leader?.display_name ?? '—';
+
+                // Last place
+                const last = sorted[sorted.length - 1];
+                const lastPts = last
+                  ? last.total_points + (last.bonus_points ?? 0) + (statsMap[last.user_id]?.fiferCount ?? 0) * 100 - (statsMap[last.user_id]?.missedPenalty ?? 0)
+                  : 0;
+                const lastName = last?.display_name ?? '—';
+
+                return (
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', borderRadius: '14px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.07)' }}>
+                    {/* Leader */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', px: 1.4, py: 1.2, background: 'rgba(245,158,11,0.06)', gap: 0.25 }}>
+                      <Typography sx={{ fontSize: '0.52rem', fontWeight: 800, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>🥇 Leader</Typography>
+                      <Typography noWrap sx={{ fontSize: '0.95rem', fontWeight: 900, color: '#fcd34d', lineHeight: 1.2, letterSpacing: '-0.01em' }}>{leaderName}</Typography>
+                      <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>{leaderPts} pts</Typography>
+                    </Box>
+                    {/* Last place */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', px: 1.4, py: 1.2, background: 'rgba(239,68,68,0.05)', gap: 0.25 }}>
+                      <Typography sx={{ fontSize: '0.52rem', fontWeight: 800, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>🪣 Last Place</Typography>
+                      <Typography noWrap sx={{ fontSize: '0.95rem', fontWeight: 900, color: '#fca5a5', lineHeight: 1.2, letterSpacing: '-0.01em' }}>{lastName}</Typography>
+                      <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>{lastPts} pts</Typography>
+                    </Box>
+                  </Box>
+                );
+              })()}
             </Box>
-            <Typography sx={{ fontWeight: 900, fontSize: '1.5rem', color: '#fff', letterSpacing: '-0.02em' }}>
-              Leaderboard
-            </Typography>
-            <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600 }}>
-              Season rankings · All matches
-            </Typography>
           </Box>
         </Container>
       </Box>
@@ -1226,58 +1317,53 @@ const Leaderboard = () => {
         );
       })()}
 
-      {/* ── My rank pill (if outside top 3) ─────────────── */}
-      {!loading && !error && myRow && myRank !== null && myRank > 3 && (
-        <Container maxWidth="md" sx={{ px: { xs: 1.5, sm: 2 } }}>
-          <Box
-            sx={{
-              mt: 2,
-              px: 2.1,
-              py: 1.3,
-              borderRadius: '18px',
-              background: 'linear-gradient(135deg, #0f172a 0%, #111827 100%)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              boxShadow: '0 8px 22px rgba(0,0,0,0.22)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.25,
-              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-              '&:hover': {
-                transform: 'translateY(-1px)',
-                boxShadow: '0 14px 28px rgba(0,0,0,0.3)',
-              },
-            }}
-          >
+      {/* ── My rank sticky card (if outside top 3) ─────────────── */}
+      {!loading && !error && myRow && myRank !== null && myRank > 3 && (() => {
+        const displayPtsVal = myRow.total_points + (myRow.bonus_points ?? 0) + (statsMap[myRow.user_id]?.fiferCount ?? 0) * 100 - (statsMap[myRow.user_id]?.missedPenalty ?? 0);
+        const myDelta = rankDeltaMap[myRow.user_id];
+        return (
+          <Container maxWidth="md" sx={{ px: { xs: 1.5, sm: 2 } }}>
             <Box
               sx={{
-                width: 36, height: 36, borderRadius: '10px',
-                background: 'rgba(255,255,255,0.12)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 900, fontSize: '0.78rem', color: '#fff', flexShrink: 0,
+                mt: 2, px: 2.2, py: 1.5, borderRadius: '18px',
+                background: 'linear-gradient(135deg, #111827 0%, #0f172a 100%)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                boxShadow: '0 8px 28px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)',
+                display: 'flex', alignItems: 'center', gap: 1.4,
+                position: 'relative', overflow: 'hidden',
+                '&::before': { content: '""', position: 'absolute', left: 0, top: '15%', bottom: '15%', width: '3px', borderRadius: '0 3px 3px 0', background: 'linear-gradient(180deg, #f59e0b, #d97706)' },
               }}
             >
-              {getInitials(myRow.display_name)}
+              <Box sx={{ width: 40, height: 40, borderRadius: '12px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.88rem', color: '#f59e0b', flexShrink: 0 }}>
+                {getInitials(myRow.display_name)}
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 0.3 }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.85rem', color: '#fff', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {myRow.display_name}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.58rem', fontWeight: 800, color: '#f59e0b', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '5px', px: 0.5, py: 0.1, lineHeight: 1, flexShrink: 0 }}>You</Typography>
+                </Box>
+                <Typography sx={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>
+                  {myRow.graded_predictions} graded · All stages
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+                {myDelta && myDelta !== 0 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', px: 0.7, py: 0.3, borderRadius: '7px', background: myDelta > 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', border: `1px solid ${myDelta > 0 ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)'}` }}>
+                    <Typography sx={{ fontSize: '0.55rem', color: myDelta > 0 ? '#4ade80' : '#f87171' }}>{myDelta > 0 ? '▲' : '▼'}</Typography>
+                    <Typography sx={{ fontSize: '0.62rem', fontWeight: 900, color: myDelta > 0 ? '#4ade80' : '#f87171' }}>{Math.abs(myDelta)}</Typography>
+                  </Box>
+                )}
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography sx={{ fontWeight: 900, fontSize: '1.2rem', color: '#f59e0b', lineHeight: 1 }}>#{myRank}</Typography>
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)' }}>{displayPtsVal} pts</Typography>
+                </Box>
+              </Box>
             </Box>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontWeight: 800, fontSize: '0.82rem', color: '#fff', lineHeight: 1.2 }}>
-                {myRow.display_name}
-              </Typography>
-              <Typography sx={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>
-                {myRow.graded_predictions} graded predictions
-              </Typography>
-            </Box>
-            <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-              <Typography sx={{ fontWeight: 900, fontSize: '1.1rem', color: '#fff', lineHeight: 1 }}>
-                #{myRank}
-              </Typography>
-              <Typography sx={{ fontWeight: 700, fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)' }}>
-                {myRow.total_points + (myRow.bonus_points ?? 0) + (statsMap[myRow.user_id]?.fiferCount ?? 0) * 100 - (statsMap[myRow.user_id]?.missedPenalty ?? 0)} pts
-              </Typography>
-            </Box>
-          </Box>
-        </Container>
-      )}
+          </Container>
+        );
+      })()}
 
       {/* ── Table ─────────────────────────────────────────── */}
       {!loading && !error && sorted.length > 0 && (
@@ -1428,20 +1514,32 @@ const Leaderboard = () => {
 
                     {/* Name + progress bar */}
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography
-                        sx={{
-                          fontWeight: isMe ? 800 : 600,
-                          fontSize: '0.84rem',
-                          color: '#fff',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          lineHeight: 1.2,
-                          mb: 0.55,
-                        }}
-                      >
-                        {row.display_name}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 0.55 }}>
+                        <Typography
+                          sx={{
+                            fontWeight: isMe ? 800 : 600,
+                            fontSize: '0.84rem',
+                            color: '#fff',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {row.display_name}
+                        </Typography>
+                        {(() => {
+                          const delta = rankDeltaMap[row.user_id];
+                          if (!delta || delta === 0) return null;
+                          const up = delta > 0;
+                          return (
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: '2px', px: 0.55, py: 0.15, borderRadius: '5px', flexShrink: 0, background: up ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', border: `1px solid ${up ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)'}` }}>
+                              <Typography sx={{ fontSize: '0.48rem', lineHeight: 1, color: up ? '#4ade80' : '#f87171' }}>{up ? '▲' : '▼'}</Typography>
+                              <Typography sx={{ fontSize: '0.52rem', fontWeight: 900, lineHeight: 1, color: up ? '#4ade80' : '#f87171' }}>{Math.abs(delta)}</Typography>
+                            </Box>
+                          );
+                        })()}
+                      </Box>
                       {/* Progress bar */}
                       <Box sx={{ height: '3px', borderRadius: '99px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden', maxWidth: '160px' }}>
                         <Box

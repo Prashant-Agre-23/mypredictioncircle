@@ -242,7 +242,7 @@ const Dashboard: React.FC = () => {
               if (!activeMatch || !pred) return null;
               const winnerMeta = pred.predicted_winner ? getTeamMeta(pred.predicted_winner) : null;
               return (
-                <Box sx={{ display: { xs: 'none', sm: 'block' }, mb: 2 }}>
+                <Box sx={{ mb: 2 }}>
                   <Box sx={{
                     borderRadius: '20px',
                     background: 'linear-gradient(135deg, #0f0f0f 0%, #2a2a2a 100%)',
@@ -256,9 +256,9 @@ const Dashboard: React.FC = () => {
                       background: 'linear-gradient(180deg, #4ade80 0%, #22d3ee 100%)',
                     }} />
 
-                    <Box sx={{ pl: 3, pr: 2.5, pt: 1.5, pb: 1.5 }}>
+                    <Box sx={{ pl: { xs: 2, sm: 3 }, pr: { xs: 1.5, sm: 2.5 }, pt: { xs: 1, sm: 1.5 }, pb: { xs: 1, sm: 1.5 } }}>
                       {/* Header */}
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.25 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: { xs: 0.75, sm: 1.25 }, flexWrap: 'wrap', gap: 0.5 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
                           <Box sx={{
                             width: 7, height: 7, borderRadius: '50%',
@@ -269,29 +269,33 @@ const Dashboard: React.FC = () => {
                             Your Pick — Match {activeMatch.match_number}
                           </Typography>
                         </Box>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                           {pred.is_double_trouble && (
-                            <Box sx={{ background: 'linear-gradient(90deg, #f59e0b, #ef4444)', borderRadius: '7px', px: 1, py: 0.25, display: 'flex', alignItems: 'center', gap: 0.4 }}>
-                              <Typography sx={{ fontSize: '0.62rem', fontWeight: 900, color: '#fff', letterSpacing: '0.06em' }}>⚡ DOUBLE TROUBLE</Typography>
+                            <Box sx={{ background: 'linear-gradient(90deg, #f59e0b, #ef4444)', borderRadius: '7px', px: 0.8, py: 0.2, display: 'flex', alignItems: 'center', gap: 0.4 }}>
+                              <Typography sx={{ fontSize: '0.58rem', fontWeight: 900, color: '#fff', letterSpacing: '0.06em' }}>⚡ 2×</Typography>
                             </Box>
                           )}
                           <Box sx={{
                             borderRadius: '8px',
                             background: 'rgba(74,222,128,0.1)',
                             border: '1px solid rgba(74,222,128,0.25)',
-                            px: 1, py: 0.4,
-                            display: 'flex', alignItems: 'center', gap: 0.5,
+                            px: 0.8, py: 0.3,
+                            display: 'flex', alignItems: 'center', gap: 0.4,
                           }}>
-                            <Typography sx={{ fontSize: '0.62rem' }}>✏️</Typography>
-                            <Typography sx={{ fontSize: '0.62rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
+                            <Typography sx={{ fontSize: '0.58rem' }}>✏️</Typography>
+                            <Typography sx={{ fontSize: '0.58rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>
                               Change before match starts
                             </Typography>
                           </Box>
                         </Box>
                       </Box>
 
-                      {/* Pick columns — horizontal layout on desktop */}
-                      <Box sx={{ display: 'flex', gap: 1.5 }}>
+                      {/* Pick tiles — compact 2×2 on mobile, 4-col row on desktop */}
+                      <Box sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' },
+                        gap: { xs: 0.6, sm: 1 },
+                      }}>
                         {[
                           {
                             label: 'Winner',
@@ -301,33 +305,32 @@ const Dashboard: React.FC = () => {
                           },
                           { label: 'Top Batter', value: pred.predicted_batter_name, logo: null, color: null },
                           { label: 'Top Bowler', value: pred.predicted_bowler_name, logo: null, color: null },
-                          { label: 'Player of the Match', value: pred.predicted_mom_name, logo: null, color: null },
+                          { label: 'MOM', value: pred.predicted_mom_name, logo: null, color: null },
                         ].map(({ label, value, logo, color }) => (
                           <Box key={label} sx={{
-                            flex: 1,
                             background: 'rgba(255,255,255,0.05)',
-                            borderRadius: '12px',
+                            borderRadius: '10px',
                             border: '1px solid rgba(255,255,255,0.08)',
-                            px: 1.5, py: 1,
-                            display: 'flex', flexDirection: 'column', gap: 0.6,
+                            px: { xs: 1, sm: 1.5 }, py: { xs: 0.6, sm: 1 },
+                            display: 'flex', flexDirection: 'column', gap: 0.35,
                           }}>
-                            <Typography sx={{ fontSize: '0.58rem', fontWeight: 800, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                            <Typography sx={{ fontSize: '0.52rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                               {label}
                             </Typography>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               {logo && (
                                 <Box sx={{
-                                  width: 22, height: 22, borderRadius: '6px', flexShrink: 0,
+                                  width: 18, height: 18, borderRadius: '5px', flexShrink: 0,
                                   background: color || '#fff',
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   overflow: 'hidden', p: '2px',
-                                  boxShadow: color ? `0 2px 8px ${color}66` : 'none',
+                                  boxShadow: color ? `0 2px 6px ${color}55` : 'none',
                                 }}>
                                   <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                                 </Box>
                               )}
                               <Typography sx={{
-                                fontSize: '0.82rem', fontWeight: 800, color: '#fff',
+                                fontSize: { xs: '0.7rem', sm: '0.82rem' }, fontWeight: 800, color: '#fff',
                                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                               }}>
                                 {value || '—'}

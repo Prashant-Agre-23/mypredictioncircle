@@ -40,6 +40,8 @@ interface MatchCardProps {
   isActive: boolean;
   hasPrediction?: boolean;
   userPrediction?: UserPrediction | null;
+  communityPredicted?: number;
+  communityTotal?: number;
 }
 
 const formatDate = (dateStr: string) => {
@@ -60,7 +62,7 @@ const abbr = (name: string) => {
   return words.map((w) => w[0]).join('').toUpperCase().slice(0, 3);
 };
 
-const MatchCard = ({ match, isActive, hasPrediction = false, userPrediction = null }: MatchCardProps) => {
+const MatchCard = ({ match, isActive, hasPrediction = false, userPrediction = null, communityPredicted, communityTotal }: MatchCardProps) => {
   const navigate = useNavigate();
   const metaA = match.team_a ? getTeamMeta(match.team_a) : { color: '#1a1a2e', logo: '' };
   const metaB = match.team_b ? getTeamMeta(match.team_b) : { color: '#2b2d42', logo: '' };
@@ -287,6 +289,32 @@ const MatchCard = ({ match, isActive, hasPrediction = false, userPrediction = nu
               </>
             )}
           </Box>
+
+          {/* ── Match Buzz ── */}
+          {communityTotal != null && communityTotal > 0 && (
+            <Box sx={{ position: 'relative', zIndex: 1, px: 1.75, pt: 1.1, pb: 0.6 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.55 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box sx={{ width: 6, height: 6, borderRadius: '50%', background: '#a78bfa', boxShadow: '0 0 6px #a78bfa99', flexShrink: 0, animation: 'pulseDot 2s ease-in-out infinite', '@keyframes pulseDot': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.4 } } }} />
+                  <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: FONT }}>Match Buzz</Typography>
+                </Box>
+                <Typography sx={{ fontSize: '0.62rem', fontWeight: 800, color: 'rgba(255,255,255,0.6)', fontFamily: FONT }}>
+                  <Box component="span" sx={{ color: '#c4b5fd', fontWeight: 900 }}>{communityPredicted ?? 0}</Box>
+                  <Box component="span" sx={{ color: 'rgba(255,255,255,0.3)' }}> / {communityTotal} predicted</Box>
+                </Typography>
+              </Box>
+              <Box sx={{ height: 5, borderRadius: '99px', background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <Box sx={{
+                  height: '100%',
+                  width: `${Math.round(((communityPredicted ?? 0) / communityTotal) * 100)}%`,
+                  borderRadius: '99px',
+                  background: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
+                  boxShadow: '0 0 8px rgba(167,139,250,0.6)',
+                  transition: 'width 0.8s ease',
+                }} />
+              </Box>
+            </Box>
+          )}
 
           {/* ── CTA bar ── */}
           <Box sx={{ position: 'relative', zIndex: 1, px: 1.75, py: 1.5 }}>

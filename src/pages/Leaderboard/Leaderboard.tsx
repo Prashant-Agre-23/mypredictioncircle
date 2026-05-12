@@ -261,6 +261,7 @@ const Leaderboard = () => {
   const [latestMatchPtsMap, setLatestMatchPtsMap] = useState<Record<string, number>>({});
 
 
+
   useEffect(() => {
     const fetchLeaderboard = async () => {
       setLoading(true);
@@ -732,61 +733,9 @@ const Leaderboard = () => {
 
   const myRow = sorted.find((r) => r.user_id === session?.user?.id);
   const myRank = myRow ? (rankMap[myRow.user_id] ?? null) : null;
+
+  // ── H2H fetch ──
   const visible = showAll ? sorted : sorted.slice(0, PAGE_SIZE);
-
-  // ── Celebration particles ─────────────────────────────────────────────────
-  // Lazy useState initialisers — Math.random() runs once on mount, ESLint-safe.
-  type Particle = { id: number; left: number; animDelay: number; animDur: number; size: number; color: string; rotate: number; drift: number; shape: string };
-
-  // 🎉 WIN — vibrant multicolour confetti
-  const [winParticles] = useState<Particle[]>(() => {
-    const c = ['#f59e0b','#a855f7','#22d3ee','#f43f5e','#4ade80','#fbbf24','#818cf8','#fb7185','#34d399','#f97316'];
-    return Array.from({ length: 80 }, (_, i) => ({
-      id: i, left: Math.random() * 100, animDelay: Math.random() * 1.8,
-      animDur: 2.4 + Math.random() * 2.0, size: 8 + Math.random() * 12,
-      color: c[i % c.length], rotate: Math.random() * 360,
-      drift: (Math.random() - 0.5) * 160, shape: ['🎊','🎉','⭐','✨','🏆','🌟','💥','🎯'][i % 8],
-    }));
-  });
-
-  // 😔 LOSS — red particles
-  const [lossParticles] = useState<Particle[]>(() => {
-    const c = ['#ef4444','#dc2626','#fca5a5','#b91c1c','#f87171'];
-    return Array.from({ length: 40 }, (_, i) => ({
-      id: i, left: Math.random() * 100, animDelay: Math.random() * 1.4,
-      animDur: 1.8 + Math.random() * 1.4, size: 14 + Math.random() * 10,
-      color: c[i % c.length], rotate: Math.random() * 180,
-      drift: (Math.random() - 0.5) * 80, shape: ['💔','😭','💔','😢','🥺','💔','😔','😩','💔','😿'][i % 10],
-    }));
-  });
-
-  // 🌧️ WASHOUT — blue-grey rain drops
-  const [washoutParticles] = useState<Particle[]>(() => {
-    const c = ['#60a5fa','#93c5fd','#bfdbfe','#3b82f6','#a5b4fc','#7dd3fc'];
-    return Array.from({ length: 55 }, (_, i) => ({
-      id: i, left: Math.random() * 100, animDelay: Math.random() * 1.6,
-      animDur: 1.2 + Math.random() * 1.0, size: 12 + Math.random() * 10,
-      color: c[i % c.length], rotate: 0,
-      drift: (Math.random() - 0.5) * 20, shape: ['🌧️','💧','☔','🌨️','⛈️'][i % 5],
-    }));
-  });
-
-  // ❓ MISSED — warning / clock / question mark particles
-  const [missedParticles] = useState<Particle[]>(() => {
-    const c = ['#fbbf24','#f97316','#ef4444','#facc15','#fb923c'];
-    return Array.from({ length: 40 }, (_, i) => ({
-      id: i, left: Math.random() * 100, animDelay: Math.random() * 1.6,
-      animDur: 2.0 + Math.random() * 1.6, size: 14 + Math.random() * 10,
-      color: c[i % c.length], rotate: Math.random() * 360,
-      drift: (Math.random() - 0.5) * 120, shape: ['❓','⏰','📋','😬','🤦','⚠️','🙈'][i % 7],
-    }));
-  });
-
-  const PARTICLES: Particle[] =
-    celebrationState === 'win'     ? winParticles :
-    celebrationState === 'loss'    ? lossParticles :
-    celebrationState === 'washout' ? washoutParticles :
-    celebrationState === 'missed'  ? missedParticles : [];
 
   const streakLabel = (streak: number, fiferCount: number) => {
     // Fifer earned + still has active streak
@@ -808,160 +757,241 @@ const Leaderboard = () => {
     <Box sx={{ minHeight: '100vh', background: '#f5f5f7', pb: 2.5 }}>
       <Navbar />
 
-      {/* ── Celebration overlay ───────────────────────────── */}
+      {/* ── Celebration Overlay ─────────────────────────────── */}
       {celebrationState && (() => {
-        // Per-state config
-        const cfg = {
-          win: {
-            tint: 'radial-gradient(ellipse at 50% 60%, rgba(168,85,247,0.15) 0%, transparent 65%)',
-            bannerBg: 'linear-gradient(135deg, rgba(109,40,217,0.92) 0%, rgba(245,158,11,0.88) 100%)',
-            bannerBorder: '1px solid rgba(196,181,253,0.55)',
-            bannerShadow: '0 20px 56px rgba(124,58,237,0.65)',
-            icon: '🏆🎉',
-            title: 'Nailed it! Correct pick!',
-            sub: 'Your prediction was spot on 🔥 Keep the streak going!',
-            anim: 'confettiFall',
-            dur: 7.5,
-          },
-          loss: {
-            tint: 'radial-gradient(ellipse at 50% 60%, rgba(239,68,68,0.15) 0%, transparent 65%)',
-            bannerBg: 'linear-gradient(135deg, rgba(185,28,28,0.92) 0%, rgba(239,68,68,0.88) 100%)',
-            bannerBorder: '1px solid rgba(252,165,165,0.4)',
-            bannerShadow: '0 12px 36px rgba(220,38,38,0.55)',
-            icon: '💔😭',
-            title: 'Wrong prediction this time',
-            sub: 'Every legend has a bad day — come back stronger next match! 💪🔥',
-            anim: 'floatDown',
-            dur: 7.0,
-          },
-          washout: {
-            tint: 'radial-gradient(ellipse at 50% 60%, rgba(59,130,246,0.15) 0%, transparent 65%)',
-            bannerBg: 'linear-gradient(135deg, rgba(30,58,138,0.92) 0%, rgba(59,130,246,0.82) 100%)',
-            bannerBorder: '1px solid rgba(147,197,253,0.4)',
-            bannerShadow: '0 14px 40px rgba(59,130,246,0.5)',
-            icon: '☔🌧️',
-            title: 'Match washed out!',
-            sub: 'Rain wins today — your prediction energy is saved for the next one! 🌈',
-            anim: 'rainDrop',
-            dur: 7.0,
-          },
-          missed: {
-            tint: 'radial-gradient(ellipse at 50% 60%, rgba(234,179,8,0.12) 0%, transparent 65%)',
-            bannerBg: 'linear-gradient(135deg, rgba(120,53,15,0.92) 0%, rgba(234,179,8,0.82) 100%)',
-            bannerBorder: '1px solid rgba(251,191,36,0.4)',
-            bannerShadow: '0 14px 40px rgba(234,179,8,0.4)',
-            icon: '⏰😬',
-            title: 'Prediction missed!',
-            sub: 'Set a reminder — you\'re one prediction away from climbing the board! ⚡',
-            anim: 'floatDown',
-            dur: 7.0,
-          },
+        const totalDur = celebrationState === 'win' ? 6 : 5;
+
+        const theme = {
+          win:     { colors: ['#22c55e','#86efac','#fbbf24','#f59e0b','#a3e635','#4ade80'], glow: '#22c55e', overlay: 'rgba(0,18,6,0.5)',  title: 'Nailed It!',          sub: 'Correct prediction — points are yours.',    badge: 'HIT'  },
+          loss:    { colors: ['#ef4444','#f87171','#fca5a5','#dc2626','#fb923c','#f97316'], glow: '#ef4444', overlay: 'rgba(18,0,0,0.5)',  title: 'Wrong Pick',          sub: 'Next match is your comeback moment.',       badge: 'MISS' },
+          washout: { colors: ['#60a5fa','#93c5fd','#38bdf8','#7dd3fc','#a5b4fc','#bfdbfe'], glow: '#60a5fa', overlay: 'rgba(0,8,22,0.5)',  title: 'Match Washed Out',    sub: 'Rain wins today — no points lost.',         badge: 'VOID' },
+          missed:  { colors: ['#f59e0b','#fcd34d','#fb923c','#fbbf24','#fdba74','#fef08a'], glow: '#f59e0b', overlay: 'rgba(16,6,0,0.5)',  title: 'Prediction Missed',   sub: 'No pick submitted before the deadline.',    badge: 'OUT'  },
         }[celebrationState];
 
+        // Multiple launch points — 5 for win, 3 for others
+        const launchXs = celebrationState === 'win' ? [12, 30, 50, 70, 88] : [22, 50, 78];
+
+        // ~20 particles per launch point
+        const allParticles = launchXs.flatMap((lx, li) =>
+          Array.from({ length: 20 }, (_, pi) => {
+            const angle = (pi / 20) * 360 + (Math.random() - 0.5) * 18;
+            const speed = 160 + Math.random() * 340;
+            const size  = 7 + Math.random() * 13;
+            const delay = li * 0.18 + Math.random() * 0.28;
+            const dur   = 1.0 + Math.random() * 0.9;
+            const rad   = (angle * Math.PI) / 180;
+            const tx    = Math.cos(rad) * speed;
+            const ty    = Math.sin(rad) * speed;
+            const col   = theme.colors[pi % theme.colors.length];
+            const shape = ['circle','square','diamond'][pi % 3];
+            const rot   = (Math.random() > 0.5 ? 480 : -480);
+            return { id: `${li}-${pi}`, lx, size, delay, dur, tx, ty, col, shape, rot };
+          })
+        );
+
+        // Shockwave ring per launch point
+        const rings = launchXs.map((lx, li) => ({ id: li, lx, delay: li * 0.18 }));
+
+        // 50 glitter pieces falling from the top
+        const glitter = Array.from({ length: 50 }, (_, i) => ({
+          id: i,
+          left: Math.random() * 100,
+          size: 4 + Math.random() * 9,
+          delay: 0.25 + Math.random() * 2.8,
+          dur:   1.8 + Math.random() * 2.2,
+          col:   theme.colors[i % theme.colors.length],
+          rot:   Math.random() * 360,
+        }));
+
         return (
-          <Box
-            onClick={() => setCelebrationState(null)}
-            sx={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 9999,
-              pointerEvents: 'all',
-              cursor: 'pointer',
-              overflow: 'hidden',
-              background: cfg.tint,
-              // ── Keyframes for all 4 states ──
-              '@keyframes confettiFall': {
-                '0%':   { transform: 'translateY(-10vh) translateX(0) rotate(0deg)', opacity: 1 },
-                '80%':  { opacity: 0.9 },
-                '100%': { transform: 'translateY(115vh) translateX(var(--drift)) rotate(900deg)', opacity: 0 },
+          <Box sx={{ position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none', overflow: 'hidden' }}>
+
+            {/* Tinted overlay */}
+            <Box sx={{
+              position: 'absolute', inset: 0,
+              background: theme.overlay,
+              '@keyframes overlayPop': {
+                '0%': { opacity: 0 }, '6%': { opacity: 1 }, '65%': { opacity: 1 }, '100%': { opacity: 0 },
               },
-              '@keyframes rainDrop': {
-                '0%':   { transform: 'translateY(-8vh) scaleY(0.8)', opacity: 0.9 },
-                '60%':  { opacity: 0.75 },
-                '100%': { transform: 'translateY(112vh) scaleY(1.4)', opacity: 0 },
+              animation: `overlayPop ${totalDur}s ease forwards`,
+            }} />
+
+            {/* Keyframe definitions (invisible box) */}
+            <Box sx={{
+              display: 'none',
+              '@keyframes burstFly': {
+                '0%':   { transform: 'translate(0,0) scale(1.2) rotate(0deg)', opacity: 1 },
+                '35%':  { opacity: 1 },
+                '100%': { transform: 'translate(var(--tx),var(--ty)) scale(0) rotate(var(--rot))', opacity: 0 },
               },
-              '@keyframes floatDown': {
-                '0%':   { transform: 'translateY(-8vh) translateX(0) rotate(0deg)', opacity: 1 },
-                '70%':  { opacity: 0.85 },
-                '100%': { transform: 'translateY(112vh) translateX(var(--drift)) rotate(360deg)', opacity: 0 },
+              '@keyframes ringExpand': {
+                '0%':   { transform: 'translate(-50%,-50%) scale(0)', opacity: 1 },
+                '70%':  { opacity: 0.4 },
+                '100%': { transform: 'translate(-50%,-50%) scale(6)', opacity: 0 },
               },
-              '@keyframes bannerIn': {
-                '0%':   { transform: 'translateX(-50%) translateY(-90px) scale(0.85)', opacity: 0 },
-                '12%':  { transform: 'translateX(-50%) translateY(0)     scale(1.04)', opacity: 1 },
-                '18%':  { transform: 'translateX(-50%) translateY(0)     scale(1)',    opacity: 1 },
-                '78%':  { transform: 'translateX(-50%) translateY(0)     scale(1)',    opacity: 1 },
-                '100%': { transform: 'translateX(-50%) translateY(-90px) scale(0.85)', opacity: 0 },
+              '@keyframes glitterFall': {
+                '0%':   { transform: 'translateY(-16px) rotate(var(--rot)) scale(1)', opacity: 1 },
+                '75%':  { opacity: 0.8 },
+                '100%': { transform: 'translateY(108vh) rotate(calc(var(--rot) + 600deg)) scale(0.2)', opacity: 0 },
               },
-            }}
-          >
-            {/* ── Particles ── */}
-            {PARTICLES.map((p: Particle) => (
-              <Box
-                key={p.id}
-                sx={{
-                  position: 'absolute',
-                  top: 0,
-                  left: `${p.left}%`,
-                  fontSize: { xs: `${Math.round(p.size * 0.82)}px`, sm: `${p.size}px` },
-                  color: p.color,
-                  animation: `${cfg.anim} ${p.animDur}s ${p.animDelay}s ease-in forwards`,
-                  transform: `rotate(${p.rotate}deg)`,
-                  userSelect: 'none',
-                  lineHeight: 1,
-                  // CSS custom property for horizontal drift (used in keyframe)
-                  ['--drift' as string]: `${p.drift}px`,
-                }}
-              >
-                {p.shape}
-              </Box>
+              '@keyframes cardEntry': {
+                '0%':   { transform: 'translateX(-50%) translateY(110px) scale(0.78)', opacity: 0 },
+                '11%':  { transform: 'translateX(-50%) translateY(-10px) scale(1.04)', opacity: 1 },
+                '17%':  { transform: 'translateX(-50%) translateY(0) scale(1)', opacity: 1 },
+                '70%':  { transform: 'translateX(-50%) translateY(0) scale(1)', opacity: 1 },
+                '100%': { transform: 'translateX(-50%) translateY(110px) scale(0.88)', opacity: 0 },
+              },
+              '@keyframes borderShimmer': {
+                '0%':   { backgroundPosition: '0% 50%' },
+                '100%': { backgroundPosition: '200% 50%' },
+              },
+              '@keyframes ringPulse': {
+                '0%,100%': { transform: 'scale(1)',   opacity: 0.5 },
+                '50%':     { transform: 'scale(1.55)', opacity: 0   },
+              },
+            }} />
+
+            {/* Shockwave rings */}
+            {rings.map(({ id, lx, delay }) => (
+              <Box key={`r${id}`} sx={{
+                position: 'absolute',
+                bottom: { xs: 96, sm: 114 },
+                left: `${lx}%`,
+                width: 56, height: 56, borderRadius: '50%',
+                border: `3px solid ${theme.glow}`,
+                boxShadow: `0 0 28px 6px ${theme.glow}88`,
+                opacity: 0,
+                animation: `ringExpand 0.9s ${delay}s ease-out forwards`,
+              }} />
             ))}
 
-            {/* ── Banner ── */}
-            <Box
-              sx={{
+            {/* Burst particles */}
+            {allParticles.map(({ id, lx, size, delay, dur, tx, ty, col, shape, rot }) => (
+              <Box key={`p${id}`} sx={{
                 position: 'absolute',
-                top: { xs: '28%', sm: '24%' },
-                left: '50%',
-                // transform handled in keyframe; initial shift set here for layout
-                transform: 'translateX(-50%)',
-                animation: `bannerIn ${cfg.dur}s cubic-bezier(0.34,1.56,0.64,1) forwards`,
-                textAlign: 'center',
-                px: { xs: 2.5, sm: 3.5 },
-                py: { xs: 1.5, sm: 2 },
-                borderRadius: { xs: '18px', sm: '24px' },
-                backdropFilter: 'blur(20px)',
-                background: cfg.bannerBg,
-                border: cfg.bannerBorder,
-                boxShadow: cfg.bannerShadow,
-                minWidth: { xs: '220px', sm: '280px' },
-                maxWidth: { xs: 'calc(100vw - 48px)', sm: '400px' },
-              }}
-            >
-              <Typography sx={{ fontSize: { xs: '2rem', sm: '2.4rem' }, lineHeight: 1.1, mb: 0.5 }}>
-                {cfg.icon}
-              </Typography>
-              <Typography sx={{
-                fontWeight: 900,
-                fontSize: { xs: '1rem', sm: '1.2rem' },
-                color: '#fff',
-                letterSpacing: '-0.01em',
-                lineHeight: 1.3,
+                bottom: { xs: 112, sm: 130 },
+                left: `${lx}%`,
+                width:  shape === 'diamond' ? `${size * 0.85}px` : `${size}px`,
+                height: shape === 'diamond' ? `${size * 0.85}px` : `${size}px`,
+                borderRadius: shape === 'circle' ? '50%' : '3px',
+                background: col,
+                boxShadow: `0 0 ${size + 8}px ${Math.round(size * 0.8)}px ${col}77`,
+                transform: shape === 'diamond' ? 'rotate(45deg)' : 'none',
+                opacity: 0,
+                animation: `burstFly ${dur}s ${delay}s cubic-bezier(0.08,0.92,0.35,1) forwards`,
+                ['--tx' as string]: `${tx}px`,
+                ['--ty' as string]: `${ty}px`,
+                ['--rot' as string]: `${rot}deg`,
+              }} />
+            ))}
+
+            {/* Glitter falling from top */}
+            {glitter.map(({ id, left, size, delay, dur, col, rot }) => (
+              <Box key={`g${id}`} sx={{
+                position: 'absolute', top: 0,
+                left: `${left}%`,
+                width: `${size}px`, height: `${size}px`,
+                borderRadius: size > 9 ? '3px' : '50%',
+                background: col,
+                boxShadow: `0 0 ${size + 5}px ${col}bb`,
+                opacity: 0,
+                animation: `glitterFall ${dur}s ${delay}s linear forwards`,
+                ['--rot' as string]: `${rot}deg`,
+              }} />
+            ))}
+
+            {/* Card with shimmer border */}
+            <Box sx={{
+              position: 'absolute',
+              bottom: { xs: 24, sm: 32 },
+              left: '50%',
+              width: { xs: 'calc(100vw - 32px)', sm: '470px' },
+              animation: `cardEntry ${totalDur}s cubic-bezier(0.34,1.56,0.64,1) forwards`,
+            }}>
+              {/* Shimmer border wrapper */}
+              <Box sx={{
+                p: '2px', borderRadius: '20px',
+                background: `linear-gradient(90deg, transparent, ${theme.glow}, ${theme.colors[1]}, ${theme.glow}, transparent)`,
+                backgroundSize: '200% 100%',
+                animation: 'borderShimmer 1.8s linear infinite',
+                boxShadow: `0 0 50px ${theme.glow}55, 0 24px 70px rgba(0,0,0,0.75)`,
               }}>
-                {cfg.title}
-              </Typography>
-              <Typography sx={{
-                fontSize: { xs: '0.72rem', sm: '0.8rem' },
-                color: 'rgba(255,255,255,0.78)',
-                fontWeight: 600,
-                mt: 0.5,
-                lineHeight: 1.4,
-              }}>
-                {cfg.sub}
-              </Typography>
-              <Typography sx={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', mt: 1.2, letterSpacing: '0.05em' }}>
-                Tap anywhere to dismiss
-              </Typography>
+                <Box sx={{
+                  display: 'flex', alignItems: 'center', gap: 1.8,
+                  px: 2.2, py: 1.8, borderRadius: '18px',
+                  background: 'linear-gradient(140deg,#05071a 0%,#0c0f2a 50%,#05071a 100%)',
+                }}>
+
+                  {/* Glowing icon */}
+                  <Box sx={{
+                    width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: `radial-gradient(circle, ${theme.glow}44 0%, ${theme.glow}11 55%, transparent 100%)`,
+                    border: `2px solid ${theme.glow}88`,
+                    boxShadow: `0 0 30px ${theme.glow}77, inset 0 0 18px ${theme.glow}33`,
+                  }}>
+                    {celebrationState === 'win' && (
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                        <path d="M4 12L9 17L20 6" stroke={theme.glow} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                    {celebrationState === 'loss' && (
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                        <path d="M6 6L18 18M18 6L6 18" stroke={theme.glow} strokeWidth="2.8" strokeLinecap="round"/>
+                      </svg>
+                    )}
+                    {celebrationState === 'washout' && (
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                        <path d="M7 18a5 5 0 0 1 0-10h.3A7 7 0 1 1 19 16.9" stroke={theme.glow} strokeWidth="2" strokeLinecap="round"/>
+                        <path d="M9 21.5v1.5M13 21.5v1.5M11 20.5v1.5" stroke={theme.colors[1]} strokeWidth="2.2" strokeLinecap="round"/>
+                      </svg>
+                    )}
+                    {celebrationState === 'missed' && (
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="9.5" stroke={theme.glow} strokeWidth="2"/>
+                        <path d="M12 7v5.5l4 2.3" stroke={theme.glow} strokeWidth="2.2" strokeLinecap="round"/>
+                      </svg>
+                    )}
+                  </Box>
+
+                  {/* Text */}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.9, mb: 0.35 }}>
+                      <Typography sx={{ fontWeight: 900, fontSize: '1.05rem', color: '#fff', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+                        {theme.title}
+                      </Typography>
+                      <Box sx={{
+                        px: 0.9, py: 0.22, borderRadius: '6px', flexShrink: 0,
+                        background: `${theme.glow}28`, border: `1px solid ${theme.glow}66`,
+                      }}>
+                        <Typography sx={{ fontSize: '0.55rem', fontWeight: 900, letterSpacing: '0.12em', textTransform: 'uppercase', color: theme.colors[1] }}>
+                          {theme.badge}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.42)', fontWeight: 500, lineHeight: 1.4 }}>
+                      {theme.sub}
+                    </Typography>
+                  </Box>
+
+                  {/* Triple-ring pulse indicator */}
+                  <Box sx={{ position: 'relative', width: 36, height: 36, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {[0, 0.55, 1.1].map((del, ri) => (
+                      <Box key={ri} sx={{
+                        position: 'absolute',
+                        width: 36 - ri * 8, height: 36 - ri * 8,
+                        borderRadius: '50%',
+                        border: `1.5px solid ${theme.glow}`,
+                        animation: `ringPulse 1.6s ${del}s ease-in-out infinite`,
+                      }} />
+                    ))}
+                    <Box sx={{ width: 11, height: 11, borderRadius: '50%', background: theme.glow, boxShadow: `0 0 12px 4px ${theme.glow}` }} />
+                  </Box>
+
+                </Box>
+              </Box>
             </Box>
+
           </Box>
         );
       })()}
@@ -1069,6 +1099,7 @@ const Leaderboard = () => {
           <Typography sx={{ color: '#dc2626', fontSize: '0.9rem' }}>{error}</Typography>
         </Box>
       )}
+
 
       {/* ── Today's match card — shown after match starts, until results are in ── */}
       {!loading && !error && todayMatchResults.length > 0 && (topTodayPoints === null || topTodayPoints === 0) && (() => {

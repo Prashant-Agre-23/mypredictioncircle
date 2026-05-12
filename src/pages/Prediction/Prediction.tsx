@@ -105,12 +105,14 @@ const PlayerCard = ({
   onSelect,
   color,
   isCorrect = null,
+  teamName,
 }: {
   player: Player;
   selected: boolean;
   onSelect: () => void;
   color: string;
   isCorrect?: boolean | null;
+  teamName?: string;
 }) => (
   <Box
     onClick={onSelect}
@@ -121,49 +123,58 @@ const PlayerCard = ({
       px: 1,
       py: 1,
       borderRadius: '12px',
-      border: isCorrect ? '2px solid #16a34a' : selected ? `2px solid ${color}` : '2px solid transparent',
-      background: isCorrect ? '#f0fdf4' : selected ? `${color}12` : '#fff',
+      border: isCorrect
+        ? '2px solid #16a34a'
+        : selected
+        ? `2px solid ${color}`
+        : '2px solid transparent',
+      background: isCorrect
+        ? '#f0fdf4'
+        : selected
+        ? `${color}18`
+        : '#fff',
       cursor: 'pointer',
       transition: 'all 0.18s ease',
       boxShadow: isCorrect
         ? '0 4px 16px rgba(22,163,74,0.25)'
         : selected
-        ? `0 4px 16px ${color}30`
-        : '0 1px 4px rgba(0,0,0,0.05)',
+        ? `0 4px 16px ${color}35`
+        : '0 1px 4px rgba(0,0,0,0.04)',
       '&:hover': {
-        background: isCorrect ? '#dcfce7' : selected ? `${color}18` : '#fafafa',
+        background: isCorrect ? '#dcfce7' : selected ? `${color}22` : '#fafafa',
         transform: 'translateY(-1px)',
       },
       mb: 0.75,
     }}
   >
-    {/* Coloured left accent bar instead of avatar */}
+    {/* Team-coloured left accent bar — always visible */}
     <Box
       sx={{
         width: 3,
         height: 28,
         borderRadius: '2px',
-        background: isCorrect ? '#16a34a' : selected ? color : 'rgba(0,0,0,0.1)',
+        background: isCorrect ? '#16a34a' : color,
+        opacity: isCorrect ? 1 : selected ? 1 : 1,
         flexShrink: 0,
-        transition: 'background 0.18s ease',
+        transition: 'opacity 0.18s ease',
       }}
     />
-    <Typography
-      sx={{
-        flex: 1,
-        minWidth: 0,
-        fontWeight: 700,
-        fontSize: '0.68rem',
-        color: isCorrect ? '#15803d' : selected ? color : '#000',
-        lineHeight: 1.2,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-        transition: 'color 0.18s ease',
-      }}
-    >
-      {player.name}
-    </Typography>
+    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.2 }}>
+      <Typography
+        sx={{
+          fontWeight: 700,
+          fontSize: '0.68rem',
+          color: isCorrect ? '#15803d' : selected ? color : '#000',
+          lineHeight: 1.2,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          transition: 'color 0.18s ease',
+        }}
+      >
+        {player.name}
+      </Typography>
+    </Box>
     {isCorrect && (
       <CheckCircleIcon sx={{ fontSize: '0.95rem', color: '#16a34a', flexShrink: 0 }} />
     )}
@@ -199,6 +210,7 @@ const Prediction = () => {
   });
 
   const allSelected = Object.values(selections).every((v) => v !== null);
+  const [playerSearch, setPlayerSearch] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -371,9 +383,10 @@ const Prediction = () => {
       setSaved(true);
       setIsEditing(false);
       setShowPreview(false);
-      setToast({ open: true, message: wasEditing ? 'Prediction updated successfully!' : 'Prediction saved successfully!' });
-      // Refresh DT count so the toggle reflects the saved state (including washout matches)
       if (match) refreshDtCount(match.id, match.match_number);
+      // Redirect to dashboard after a brief moment so the user sees the success state
+      setTimeout(() => navigate('/dashboard'), 1200);
+      setToast({ open: true, message: wasEditing ? 'Prediction updated! Redirecting…' : 'Prediction saved! Redirecting…' });
     } else {
       alert(`Error saving: ${error.message}`);
     }
@@ -809,7 +822,7 @@ const Prediction = () => {
         <Container maxWidth="md" disableGutters>
           <Tabs
             value={activeTab}
-            onChange={(_, v) => setActiveTab(v as TabKey)}
+            onChange={(_, v) => { setActiveTab(v as TabKey); setPlayerSearch(''); }}
             variant="fullWidth"
             TabIndicatorProps={{ style: { display: 'none' } }}
             sx={{
@@ -1004,8 +1017,91 @@ const Prediction = () => {
                 <Typography sx={{ fontWeight: 700, color: '#000', mb: 0.4 }}>No players found</Typography>
                 <Typography sx={{ fontSize: '0.82rem', color: 'rgba(0,0,0,0.4)' }}>Players will be listed once the squad is announced.</Typography>
               </Box>
-            ) : (
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, alignItems: 'start' }}>
+            ) : (() => {
+              const q = playerSearch.toLowerCase().trim();
+              const filteredA = playersA.filter((p) => !q || p.name.toLowerCase().includes(q));
+              const filteredB = playersB.filter((p) => !q || p.name.toLowerCase().includes(q));
+              const selectedPlayer = players.find((p) => Number(p.id) === Number(selections[activeTab]));
+              const selectedTeamColor = selectedPlayer?.team === teamA ? colorA : colorB;
+              return (
+                <Box>
+                  {/* ── Search bar ── */}
+                  <Box sx={{
+                    display: 'flex', alignItems: 'center',
+                    background: '#fff',
+                    borderRadius: '12px',
+                    border: `2px solid ${playerSearch ? '#000' : '#e2e8f0'}`,
+                    mb: 2,
+                    overflow: 'hidden',
+                    boxShadow: playerSearch ? '0 0 0 4px rgba(0,0,0,0.06)' : '0 1px 4px rgba(0,0,0,0.06)',
+                    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', pl: 1.5, flexShrink: 0 }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                        <circle cx="11" cy="11" r="7" stroke={playerSearch ? '#000' : '#94a3b8'} strokeWidth="2.3"/>
+                        <path d="M16.5 16.5L21 21" stroke={playerSearch ? '#000' : '#94a3b8'} strokeWidth="2.3" strokeLinecap="round"/>
+                      </svg>
+                    </Box>
+                    <Box
+                      component="input"
+                      placeholder="Search player…"
+                      value={playerSearch}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPlayerSearch(e.target.value)}
+                      sx={{
+                        flex: 1, border: 'none', outline: 'none',
+                        background: 'transparent',
+                        fontSize: '0.85rem', fontWeight: 600, color: '#000',
+                        px: 1.2, py: 1.2,
+                        '&::placeholder': { color: '#94a3b8', fontWeight: 500 },
+                      }}
+                    />
+                    {playerSearch ? (
+                      <Box
+                        onClick={() => setPlayerSearch('')}
+                        sx={{
+                          width: 22, height: 22, borderRadius: '50%',
+                          background: '#f1f5f9',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', flexShrink: 0, mr: 1.2,
+                          '&:hover': { background: '#e2e8f0' },
+                          transition: 'background 0.15s',
+                        }}
+                      >
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
+                          <path d="M6 6L18 18M18 6L6 18" stroke="#475569" strokeWidth="2.5" strokeLinecap="round"/>
+                        </svg>
+                      </Box>
+                    ) : (
+                      <Typography sx={{ fontSize: '0.62rem', fontWeight: 700, color: '#cbd5e1', letterSpacing: '0.05em', mr: 1.5, flexShrink: 0 }}>SEARCH</Typography>
+                    )}
+                  </Box>
+
+                  {/* ── Selected player chip ── */}
+                  {selectedPlayer && (
+                    <Box sx={{
+                      display: 'flex', alignItems: 'center', gap: 0.75,
+                      mb: 1.5, px: 1.2, py: 0.75, borderRadius: '10px',
+                      background: `${selectedTeamColor}12`,
+                      border: `1.5px solid ${selectedTeamColor}40`,
+                    }}>
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: selectedTeamColor, flexShrink: 0, boxShadow: `0 0 6px ${selectedTeamColor}` }} />
+                      <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(0,0,0,0.5)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Your pick:</Typography>
+                      <Typography sx={{ fontSize: '0.73rem', fontWeight: 900, color: '#000', flex: 1 }}>{selectedPlayer.name}</Typography>
+                      <Typography sx={{ fontSize: '0.6rem', fontWeight: 800, color: selectedTeamColor, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        {selectedPlayer.team === teamA ? abbr(teamA) : abbr(teamB)}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* ── No-results message ── */}
+                  {q && filteredA.length === 0 && filteredB.length === 0 ? (
+                    <Box sx={{ textAlign: 'center', py: 6, background: '#fff', borderRadius: '16px', border: '1px solid rgba(0,0,0,0.07)' }}>
+                      <Typography sx={{ fontSize: '1.6rem', mb: 1 }}>🔍</Typography>
+                      <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', color: 'rgba(0,0,0,0.55)', mb: 0.4 }}>No players match</Typography>
+                      <Typography sx={{ fontWeight: 600, fontSize: '0.8rem', color: 'rgba(0,0,0,0.3)' }}>Try a different name or clear search</Typography>
+                    </Box>
+                  ) : (
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, alignItems: 'start' }}>
                 {/* Team A column */}
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.5, px: 0.5 }}>
@@ -1029,19 +1125,24 @@ const Prediction = () => {
                         <Typography sx={{ fontWeight: 900, fontSize: '0.62rem', color: '#fff', letterSpacing: '0.04em' }}>{abbr(teamA)}</Typography>
                       )}
                     </Box>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.2 }}>
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: colorA, boxShadow: `0 0 6px ${colorA}` }} />
+                      <Typography sx={{ fontSize: '0.52rem', fontWeight: 900, color: colorA, letterSpacing: '0.07em', textTransform: 'uppercase', lineHeight: 1 }}>{abbr(teamA)}</Typography>
+                    </Box>
                   </Box>
-                  {playersA.length === 0 ? (
+                  {filteredA.length === 0 && playersA.length > 0 ? null : filteredA.length === 0 ? (
                     <Box sx={{ py: 3, textAlign: 'center', borderRadius: '12px', background: '#fff', border: '1px dashed rgba(0,0,0,0.1)' }}>
                       <Typography sx={{ fontSize: '0.75rem', color: 'rgba(0,0,0,0.3)', fontWeight: 600 }}>Squad TBA</Typography>
                     </Box>
                   ) : (
-                    playersA.map((p) => (
+                    filteredA.map((p) => (
                       <PlayerCard
                         key={p.id}
                         player={p}
                         selected={Number(selections[activeTab]) === Number(p.id)}
                         onSelect={() => selectPlayer(activeTab, p.id)}
                         color={colorA}
+                        teamName={abbr(teamA)}
                         isCorrect={hasResults && (
                           (activeTab === 'batter' && Number(p.id) === correctBatterId) ||
                           (activeTab === 'bowler' && Number(p.id) === correctBowlerId) ||
@@ -1075,19 +1176,24 @@ const Prediction = () => {
                         <Typography sx={{ fontWeight: 900, fontSize: '0.62rem', color: '#fff', letterSpacing: '0.04em' }}>{abbr(teamB)}</Typography>
                       )}
                     </Box>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.2 }}>
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: colorB, boxShadow: `0 0 6px ${colorB}` }} />
+                      <Typography sx={{ fontSize: '0.52rem', fontWeight: 900, color: colorB, letterSpacing: '0.07em', textTransform: 'uppercase', lineHeight: 1 }}>{abbr(teamB)}</Typography>
+                    </Box>
                   </Box>
-                  {playersB.length === 0 ? (
+                  {filteredB.length === 0 && playersB.length > 0 ? null : filteredB.length === 0 ? (
                     <Box sx={{ py: 3, textAlign: 'center', borderRadius: '12px', background: '#fff', border: '1px dashed rgba(0,0,0,0.1)' }}>
                       <Typography sx={{ fontSize: '0.75rem', color: 'rgba(0,0,0,0.3)', fontWeight: 600 }}>Squad TBA</Typography>
                     </Box>
                   ) : (
-                    playersB.map((p) => (
+                    filteredB.map((p) => (
                       <PlayerCard
                         key={p.id}
                         player={p}
                         selected={Number(selections[activeTab]) === Number(p.id)}
                         onSelect={() => selectPlayer(activeTab, p.id)}
                         color={colorB}
+                        teamName={abbr(teamB)}
                         isCorrect={hasResults && (
                           (activeTab === 'batter' && Number(p.id) === correctBatterId) ||
                           (activeTab === 'bowler' && Number(p.id) === correctBowlerId) ||
@@ -1097,8 +1203,11 @@ const Prediction = () => {
                     ))
                   )}
                 </Box>
+                </Box>
+                )}
               </Box>
-            )}
+              );
+            })()}
           </Box>
         )}
       </Container>

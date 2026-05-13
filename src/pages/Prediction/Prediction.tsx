@@ -105,14 +105,12 @@ const PlayerCard = ({
   onSelect,
   color,
   isCorrect = null,
-  teamName,
 }: {
   player: Player;
   selected: boolean;
   onSelect: () => void;
   color: string;
   isCorrect?: boolean | null;
-  teamName?: string;
 }) => (
   <Box
     onClick={onSelect}
@@ -1142,7 +1140,6 @@ const Prediction = () => {
                         selected={Number(selections[activeTab]) === Number(p.id)}
                         onSelect={() => selectPlayer(activeTab, p.id)}
                         color={colorA}
-                        teamName={abbr(teamA)}
                         isCorrect={hasResults && (
                           (activeTab === 'batter' && Number(p.id) === correctBatterId) ||
                           (activeTab === 'bowler' && Number(p.id) === correctBowlerId) ||
@@ -1193,7 +1190,6 @@ const Prediction = () => {
                         selected={Number(selections[activeTab]) === Number(p.id)}
                         onSelect={() => selectPlayer(activeTab, p.id)}
                         color={colorB}
-                        teamName={abbr(teamB)}
                         isCorrect={hasResults && (
                           (activeTab === 'batter' && Number(p.id) === correctBatterId) ||
                           (activeTab === 'bowler' && Number(p.id) === correctBowlerId) ||

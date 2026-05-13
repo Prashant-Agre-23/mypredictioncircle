@@ -226,11 +226,11 @@ const MyPredictions = () => {
             };
           });
 
-        // Current user always first
+        // Current user always first, then alphabetical by display_name
         preds.sort((a, b) => {
           if (a.user_id === session?.user?.id) return -1;
           if (b.user_id === session?.user?.id) return 1;
-          return 0;
+          return a.display_name.localeCompare(b.display_name);
         });
 
         return { match, predictions: preds };
